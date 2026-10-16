@@ -8,6 +8,7 @@ import { COMPLETE } from '../state/download-queue.js';
     "awaiting-browser",
     "queued",
     "resolving",
+    "debrid",
     "connecting",
     "downloading",
     "verifying",
@@ -25,8 +26,8 @@ import { COMPLETE } from '../state/download-queue.js';
     "extraction-required",
     "removing"
   ]);
-  var WAITING = ["resolving", "connecting", "verifying", "pausing", "finishing", "removing"];
-  var shownState = (job2) => job2.state === "extracting" && job2.phase === "finishing" ? "finishing" : job2.state;
+  var WAITING = ["resolving", "debrid", "connecting", "verifying", "pausing", "finishing", "removing"];
+  var shownState = (job2) => job2.state === "extracting" && job2.phase === "finishing" ? "finishing" : job2.state === "resolving" && job2.phase === "debrid" ? "debrid" : job2.state;
   var hasStateLabel = (state) => LABELED.has(state);
   var stateLabel = (state) => t(`downloadState.${state}`);
   var clearAction = (state) => COMPLETE.includes(state) ? "remove" : "cancel";

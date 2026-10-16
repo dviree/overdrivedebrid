@@ -4,6 +4,7 @@
 // MODIFIED: an archive the catalog's password doesn't open is tried with the known release passwords.
 // MODIFIED: any provider that needs the console browser (LinkVault's mirrors, Akirabox, Datanodes)
 // has its file link captured from the browser, like Vikingfile's.
+// MODIFIED: with a TorBox key every source resolves through TorBox, direct links included.
 
 import { INCOMPLETE_PART, STALE_PARTIAL, cause } from '../downloads/errors.js';
 import { t } from '../i18n/core.js';
@@ -182,9 +183,15 @@ import { VIKING_PREFIX, capturedVikingFile, describeVikingCapture, linkPageMetad
       }
       return false;
     }
+    // While TorBox fetches the file onto its servers the row says so, with TorBox's progress.
+    const debridStatus = (job2) => (progress) => {
+      job2.phase = "debrid";
+      job2.debridProgress = progress;
+      emit2();
+    };
     function reresolve(job2) {
       const source2 = job2.parts ? job2.currentSource : job2.release;
-      if ((job2.reresolved || 0) >= 2 || ["direct", "browser", "datanodes", "manifest", "unavailable"].includes(sourceKind(source2))) return false;
+      if ((job2.reresolved || 0) >= 2 || (sources.debrid?.() ? ["manifest", "unavailable"] : ["direct", "browser", "datanodes", "manifest", "unavailable"]).includes(sourceKind(source2))) return false;
       job2.reresolved = (job2.reresolved || 0) + 1;
       delete job2.options;
       if (job2.parts) delete job2.parts[job2.partIndex].options;
@@ -266,7 +273,9 @@ import { VIKING_PREFIX, capturedVikingFile, describeVikingCapture, linkPageMetad
             job2.options = formats.manifest(await response.json());
           } else {
             if (!job2.release.url && !job2.release.browserUrl) throw new Error("This release has no download URL.");
-            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" ? await sources.resolve(job2.release, { signal, directURL: job2.directURL }) : { url: webURL(job2.release.url).url };
+            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" || sources.debrid?.() ? await sources.resolve(job2.release, { signal, directURL: job2.directURL, onStatus: debridStatus(job2) }) : { url: webURL(job2.release.url).url };
+            delete job2.phase;
+            delete job2.debridProgress;
             job2.options = {
               ...resolved,
               rejectHtml: true,
@@ -341,6 +350,10 @@ import { VIKING_PREFIX, capturedVikingFile, describeVikingCapture, linkPageMetad
         }
       } finally {
         unsubscribe?.();
+        if (job2.phase === "debrid") {
+          delete job2.phase;
+          delete job2.debridProgress;
+        }
         if (job2.state === "pausing") job2.state = "paused";
         if (COMPLETE.includes(job2.state)) delete job2.launches;
         if (job2.cancelling) {
@@ -683,7 +696,9 @@ import { VIKING_PREFIX, capturedVikingFile, describeVikingCapture, linkPageMetad
           const source2 = job2.release.parts[index].sources[part.sourceIndex || 0];
           job2.currentSource = source2;
           if (!part.options) {
-            const resolved = await sources.resolve(source2, { signal, directURL: job2.directURL });
+            const resolved = await sources.resolve(source2, { signal, directURL: job2.directURL, onStatus: debridStatus(job2) });
+            delete job2.phase;
+            delete job2.debridProgress;
             part.options = { ...resolved, expectedBytes: source2.sizeBytes || void 0, sha256: source2.sha256 || void 0 };
             delete job2.directURL;
             change();

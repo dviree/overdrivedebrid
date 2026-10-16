@@ -118,7 +118,7 @@ import { DownloadFormats, Text, View, motion } from '@ps5-react/core';
     const sizeless = inProgress && !job2?.total;
     const amount = sizeless ? formatBytes(job2?.written || 0) : formatPercent2(Math.round(progress * 100));
     const shown = job2 && shownState(job2) === "finishing" ? "finishing" : status;
-    const [state, line] = statusLine(stale ? download.status : shown, progress, sizeGb);
+    const [state, line] = statusLine(stale ? download.status : job2 && shownState(job2) === "debrid" ? "debrid" : shown, progress, sizeGb);
     const detail2 = sizeless ? t2("download.soFar", { size: formatBytes(job2?.written || 0) }) : line;
     const problem = browser ? {
       title: step ? t2("download.browser.partTitle", step) : t2("download.browser.title"),

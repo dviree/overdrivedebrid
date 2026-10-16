@@ -1,5 +1,6 @@
 // ../pub-game-store/native/downloads/URLDialog.jsx
 // reconstructed from the esbuild bundle in eboot.bin
+// MODIFIED: the confirm button can be named, for the TorBox key.
 
 import '../assets/Inter-Regular.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
@@ -9,7 +10,7 @@ import { Keyboard } from '../search/Keyboard.jsx';
 import { Button2 } from '../ui/Button.jsx';
 import { FocusScope, Text, View } from '@ps5-react/core';
 
-  function URLDialog({ title, detail: detail2, initial = "https://", submit, onClose }) {
+  function URLDialog({ title, detail: detail2, initial = "https://", confirmLabel, submit, onClose }) {
     const t2 = useT();
     const [value, setValue] = (0, useState)(initial);
     const [error2, setError] = (0, useState)("");
@@ -37,7 +38,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
             /* @__PURE__ */ (0, jsx)(Text, { style: { width: 600, fontFamily: "Inter-Regular", fontSize: 24, color: "#a3a3ab", numberOfLines: 5, ellipsizeMode: "tail", lineHeight: 36 }, children: detail2 }),
             /* @__PURE__ */ (0, jsx)(Text, { style: { width: 600, fontFamily: "Inter-Regular", fontSize: 24, color: "#f2f2f3", numberOfLines: 5, ellipsizeMode: "tail", lineHeight: 36 }, children: value.slice(-180) || t2("urlDialog.empty") }),
             error2 ? /* @__PURE__ */ (0, jsx)(Text, { style: { width: 600, fontFamily: "Inter-Regular", fontSize: 21, color: "#f2f2f3", numberOfLines: 3, ellipsizeMode: "tail", lineHeight: 30 }, children: error2 }) : null,
-            /* @__PURE__ */ (0, jsx)(Button2, { label: t2("urlDialog.confirm"), onPress: done }),
+            /* @__PURE__ */ (0, jsx)(Button2, { label: confirmLabel ?? t2("urlDialog.confirm"), onPress: done }),
             /* @__PURE__ */ (0, jsx)(Button2, { label: t2("urlDialog.cancel"), variant: "outline", onPress: onClose }),
             /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 21, color: "#a3a3ab", lineHeight: 30 }, children: t2("urlDialog.controls") })
           ] })
