@@ -45,6 +45,7 @@ import { Text, View } from '@ps5-react/core';
     if (status === "unavailable") return [t("download.status.unavailable"), null];
     if (status === "awaiting-browser") return [t("download.status.awaitingLink"), null];
     if (status === "finishing") return [stateLabel(status), t("downloads.writingToDisk")];
+    if (status === "debrid") return [stateLabel(status), t("downloads.debridDetail")];
     if (status === "no-space") return [t("download.status.noSpace"), sizeGb && t("download.status.needs", { size: formatSize(sizeGb) })];
     if (COMPLETE.includes(status)) return [stateLabel(status), sizeGb && formatSize(sizeGb)];
     const of = sizeGb && t("download.status.progress", { done: formatSize(sizeGb * progress), total: formatSize(sizeGb) });

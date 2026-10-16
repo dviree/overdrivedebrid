@@ -1,5 +1,6 @@
 // ../pub-game-store/native/downloads/DownloadRow.jsx
 // reconstructed from the esbuild bundle in eboot.bin
+// MODIFIED: a download TorBox is still fetching says so, with TorBox's progress.
 
 import '../assets/Inter-Regular.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
@@ -95,7 +96,7 @@ import { Text, View } from '@ps5-react/core';
               moving: BUSY.includes(state) && state !== "pausing",
               waiting: WAITING.includes(shown),
               complete,
-              detail: shown === "finishing" ? t2("downloads.writingToDisk") : null
+              detail: shown === "finishing" ? t2("downloads.writingToDisk") : shown === "debrid" ? typeof job2.debridProgress === "number" && job2.debridProgress > 0 ? t2("downloads.debridProgress", { percent: String(Math.round(Math.min(1, job2.debridProgress) * 100)) }) : t2("downloads.debridDetail") : null
             }
           ),
           note ? /* @__PURE__ */ (0, jsx)(Text, { style: problem ? { width: 870, fontFamily: "Inter-Regular", fontSize: 21, color: "#f2f2f3", numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 30 } : { width: 870, fontFamily: "Inter-Regular", fontSize: 21, color: "#a3a3ab", numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 30 }, children: note }) : null

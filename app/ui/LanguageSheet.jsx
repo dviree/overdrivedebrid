@@ -1,6 +1,7 @@
 // ../pub-game-store/native/ui/LanguageSheet.jsx
 // reconstructed from the esbuild bundle in eboot.bin
 // MODIFIED: the sheet is the app's settings: a download speed limit, navigation vibration, then the languages.
+// MODIFIED: a TorBox API key under Downloads, so every download can go through TorBox.
 
 import '../assets/Inter-Regular.ttf';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
@@ -12,6 +13,9 @@ import { SideSheet } from './SideSheet.jsx';
 import { colors } from './colors.js';
 import { setNavigationHaptics, useNavigationHaptics } from './haptics.js';
 import { LIMITS, setSpeedLimit, useSpeedLimit } from '../state/speed-limit.js';
+import { setTorboxKey, useTorboxKey } from '../state/debrid.js';
+import { URLDialog } from '../downloads/URLDialog.jsx';
+import { useState } from 'react';
 import { Text, View, useIsFocused } from '@ps5-react/core';
 
   var nameOf = (code) => LOCALES.find((locale2) => locale2.code === code).name;
@@ -66,6 +70,18 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
     const t2 = useT();
     const choice2 = languageChoice();
     const vibration = useNavigationHaptics();
+    const torboxKey = useTorboxKey();
+    const [editingKey, setEditingKey] = (0, useState)(false);
+    // The key is typed on the URL keyboard (lowercase letters, digits and dashes, as TorBox's keys
+    // are) in place of the sheet, which comes back when it closes. An empty key turns TorBox off.
+    if (editingKey) return /* @__PURE__ */ (0, jsx)(URLDialog, {
+      title: t2("settings.torboxKeyTitle"),
+      detail: t2("settings.torboxKeyDetail"),
+      initial: torboxKey,
+      confirmLabel: t2("settings.torboxKeyConfirm"),
+      submit: setTorboxKey,
+      onClose: () => setEditingKey(false)
+    });
     const pick2 = (code) => {
       chooseLanguage(code);
       onClose();
@@ -75,6 +91,7 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
     return /* @__PURE__ */ (0, jsx)(SideSheet, { title: t2("settings.title"), onClose, children: /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 6, padding: 9, paddingBottom: 48 }, children: [
       /* @__PURE__ */ (0, jsx)(SectionLabel, { icon: "download", title: t2("settings.downloads") }),
       /* @__PURE__ */ (0, jsx)(SpeedLimit, {}),
+      /* @__PURE__ */ (0, jsx)(View, { focusKey: "settings:torbox", onPress: () => setEditingKey(true), style: (_state) => [{ position: "relative", flexDirection: "row", alignItems: "center", gap: 24, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 18 }, _state.focused ? { backgroundColor: "#212125" } : null], children: /* @__PURE__ */ (0, jsx)(LanguageFace, { name: t2("settings.torbox"), detail: torboxKey ? t2("settings.torboxOn") : t2("settings.torboxOff"), checked: Boolean(torboxKey) }) }),
       /* @__PURE__ */ (0, jsx)(SectionLabel, { title: t2("settings.controller") }),
       /* @__PURE__ */ (0, jsx)(View, { focusKey: "settings:vibration", onPress: () => setNavigationHaptics(!vibration), style: (_state) => [{ position: "relative", flexDirection: "row", alignItems: "center", gap: 24, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 18 }, _state.focused ? { backgroundColor: "#212125" } : null], children: /* @__PURE__ */ (0, jsx)(LanguageFace, { name: t2("settings.vibration"), detail: t2("settings.vibrationDetail"), checked: vibration }) }),
       /* @__PURE__ */ (0, jsx)(SectionLabel, { icon: "languages", title: t2("language.title"), detail: t2("language.subtitle") }),
