@@ -117,7 +117,15 @@ ${value}\r
         torbox: { kind: entry2.kind, id: entry2.id, file: entry2.file }
       };
     }
-    return { list, release };
+    // Hands a link to TorBox: a magnet link as a torrent, anything else as a web download.
+    async function add(link) {
+      const key = apiKey();
+      if (!key) throw new Error("Add your TorBox API key first.");
+      const value = String(link || "").trim();
+      if (/^magnet:\?/i.test(value)) return call("/torrents/createtorrent", { key, method: "POST", form: { magnet: value } });
+      return call("/webdl/createwebdownload", { key, method: "POST", form: { link: webURL(value).url } });
+    }
+    return { add, list, release };
   }
   function createTorboxResolver({ http, fallback, apiKey, wait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms)), now = Date.now }) {
     const call = torboxApi(http);

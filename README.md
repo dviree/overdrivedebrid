@@ -24,6 +24,7 @@
 <p align="center">
   <a href="#install-in-four-steps">Install</a> ·
   <a href="#features">Features</a> ·
+  <a href="#torbox">TorBox</a> ·
   <a href="#updates">Updates</a> ·
   <a href="#troubleshooting">Troubleshooting</a> ·
   <a href="#build-it-yourself">Build it yourself</a>
@@ -120,6 +121,26 @@ nothing to click.
 
 You can also use **any FTP client** to move the file onto the console's internal storage
 instead, again inside a `homebrew` folder: `/data/homebrew/Overdrive.exfat`.
+
+## TorBox
+
+Overdrive can download everything through your [TorBox](https://torbox.app) account: TorBox fetches
+the file from the host (at once when it already has it cached) and the console downloads it from
+TorBox's servers, so hosts with captchas, waits or slow speeds come down at your connection's speed.
+
+1. Copy your API key from [torbox.app/settings](https://torbox.app/settings).
+2. Give it to Overdrive in one of three ways:
+   - **From a computer:** open **Settings → Download through TorBox** on the console. It shows an
+     address such as `http://192.168.1.20:7878`. Open it in a browser on a computer on the same
+     network and paste the key.
+   - **From a USB drive:** save the key alone in a file named `torbox.txt` at the root of a USB
+     drive, plug it in and choose **Read the key from a USB drive** (it is also read when the app starts).
+   - **With the controller:** choose **API key** and type it.
+3. Every download now goes through TorBox. Links TorBox doesn't support download as before.
+
+The TorBox sheet and the computer page also list the files in your TorBox account (torrents, links
+and usenet). Add a link, magnet or NZB on torbox.app, or paste a link on the computer page, then
+press **Download to PS5** when it is ready. Anyone on your network can open the computer page.
 
 ## Updates
 

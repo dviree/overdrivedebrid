@@ -184,6 +184,31 @@ check a reply against its sender before using an address it names. It needs
 `networking: true` (and on PS5 `filesystemAccess: "console"`), like HTTP. Only IPv4
 limited broadcast is sent; multicast (SSDP, mDNS) and unicast UDP are not available.
 
+## LocalServer (ABI v18)
+
+`LocalServer.listen({port, handler})` serves HTTP/1.1 on `0.0.0.0:port` (1024–65535), so a
+computer's browser can reach the app at `http://<LocalServer.address()>:<port>/`. `handler(request)`
+gets `{method, path, address, contentType, body}` (`path` includes the query; `address` is the
+peer's IPv4) and returns, or resolves to, `{status = 200, type = 'text/plain; charset=utf-8', body = ''}`;
+an object `body` is sent as JSON, and a handler that throws answers 500.
+
+```js
+import {LocalServer} from '@ps5-react/core';
+const server = LocalServer.listen({port: 7878, handler: ({path}) =>
+  path === '/' ? {type: 'text/html; charset=utf-8', body: '<h1>Hello</h1>'} : {status: 404}});
+console.log(`open http://${LocalServer.address()}:7878/`);
+server.close();
+```
+
+A native worker accepts up to 16 connections at once and reads each request (headers up to 16 KiB,
+body up to 256 KiB, `Content-Length` only, within 5 s); the render thread polls every 100 ms and
+answers through the bridge (`server.listen`, `server.poll`, `server.respond`, `server.port`,
+`server.address`, `server.close`). A request left unanswered for 15 s gets a 504; responses are at
+most 4 MiB and every connection closes after its response. One server runs at a time. It needs
+`networking: true` (and on PS5 `filesystemAccess: "console"`), like HTTP. Anyone on the network
+can send requests, so check what a request asks before acting on it. `address()` is the IPv4
+address the console reaches the internet from, or `null` without a network.
+
 ## Images
 
 `<Image source={{uri}}>` loads `http://` and `https://` URLs natively: fetched
@@ -511,7 +536,8 @@ directory or select **Refresh** to query again; focus changes do not query stora
 
 ## Not yet available
 
-- Global `fetch`, raw sockets, multicast and WebSocket (UDP broadcast queries: `LocalNetwork`).
+- Global `fetch`, raw sockets, multicast and WebSocket (UDP broadcast queries: `LocalNetwork`;
+  an HTTP server: `LocalServer`).
 - Music, streamed or long audio, and decoding compressed formats at run time.
 - The system on-screen keyboard (IME) for text input.
 - System save data; use `FileSystem.dataDir` for now.
