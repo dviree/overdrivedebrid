@@ -45,9 +45,11 @@ import { FocusScope, Text, View } from '@ps5-react/core';
       }
       if (action !== "l1" && action !== "r1") return false;
       setBrowsing(false);
-      if (action === "r1" && section === "files") setChoosingLanguage(true);
+      // Right-to-left the sections run leftward, so L1 is the one that moves on (issue #30).
+      const forward = action === (rtl ? "l1" : "r1");
+      if (forward && section === "files") setChoosingLanguage(true);
       else
-        step(action === "r1");
+        step(forward);
       return true;
     };
     const onBack = () => {
@@ -74,7 +76,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
             }
           ) }),
           /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 6 }, children: [
-            /* @__PURE__ */ (0, jsx)(ButtonGlyph, { button: "l1" }),
+            /* @__PURE__ */ (0, jsx)(ButtonGlyph, { button: rtl ? "r1" : "l1" }),
             /* @__PURE__ */ (0, jsx)(
               NavItem,
               {
@@ -202,7 +204,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
                 ...focusEnd(rtl, "nav:language")
               }
             ),
-            /* @__PURE__ */ (0, jsx)(ButtonGlyph, { button: "r1" })
+            /* @__PURE__ */ (0, jsx)(ButtonGlyph, { button: rtl ? "l1" : "r1" })
           ] })
         ] })
       ] }) }) })
