@@ -1,10 +1,21 @@
 name: build
 
-# Builds run only from Run workflow: a push builds nothing. Each run puts its build in a draft
-# release; publishing that draft creates its tag, and no build runs on tags, so players get the
-# very files that were tested.
+# Every push to main builds, and Run workflow builds any branch. Each build puts its files in a
+# draft release; publishing that draft creates its tag, and no build runs on tags, so players get
+# the very files that were tested.
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.github/readme/**'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
+
+# A newer push to the same branch replaces a build still running.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -79,7 +90,6 @@ jobs:
         # (releases/latest) never returns one, so a test build reaches nobody else.
         # The draft is named after app/version.js; building again replaces its files
         # and moves it to this commit. A version already published is left alone.
-        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -98,7 +108,9 @@ jobs:
               gh release upload "$tag" $assets --clobber ;;
             *)
               echo "$tag is already published: raise the version in app/version.js" >&2
-              exit 1 ;;
+              # A push still builds (the files are in the Overdrive artifact); Run workflow fails.
+              test "$GITHUB_EVENT_NAME" = push || exit 1
+              exit 0 ;;
           esac
           gh release view "$tag" --json isDraft,tagName,assets \
             --jq '"\(.tagName) draft=\(.isDraft) " + ([.assets[] | "\(.name) \(.size)"] | join(", "))'
