@@ -24,7 +24,7 @@
 <p align="center">
   <a href="#install-in-four-steps">Install</a> ·
   <a href="#features">Features</a> ·
-  <a href="#torbox">TorBox</a> ·
+  <a href="#torbox-and-premiumize">TorBox</a> ·
   <a href="#updates">Updates</a> ·
   <a href="#troubleshooting">Troubleshooting</a> ·
   <a href="#build-it-yourself">Build it yourself</a>
@@ -122,25 +122,38 @@ nothing to click.
 You can also use **any FTP client** to move the file onto the console's internal storage
 instead, again inside a `homebrew` folder: `/data/homebrew/Overdrive.exfat`.
 
-## TorBox
+## TorBox and Premiumize
 
-Overdrive can download everything through your [TorBox](https://torbox.app) account: TorBox fetches
-the file from the host (at once when it already has it cached) and the console downloads it from
-TorBox's servers, so hosts with captchas, waits or slow speeds come down at your connection's speed.
+Overdrive can download everything through your [TorBox](https://torbox.app) or
+[Premiumize](https://www.premiumize.me) account: the service fetches the file from the host (at once
+when it already has it cached) and the console downloads it from the service's servers, so hosts
+with captchas, waits or slow speeds come down at your connection's speed. A link is tried with TorBox
+first, then Premiumize, then the host itself.
 
-1. Copy your API key from [torbox.app/settings](https://torbox.app/settings).
+1. Copy your API key from [torbox.app/settings](https://torbox.app/settings) or
+   [premiumize.me/account](https://www.premiumize.me/account).
 2. Give it to Overdrive in one of three ways:
-   - **From a computer:** open **Settings → Download through TorBox** on the console. It shows an
-     address such as `http://192.168.1.20:7878`. Open it in a browser on a computer on the same
-     network and paste the key.
-   - **From a USB drive:** save the key alone in a file named `torbox.txt` at the root of a USB
-     drive, plug it in and choose **Read the key from a USB drive** (it is also read when the app starts).
-   - **With the controller:** choose **API key** and type it.
-3. Every download now goes through TorBox. Links TorBox doesn't support download as before.
+   - **From a computer:** open **Settings → Debrid** on the console. It shows an address such as
+     `http://192.168.1.20:7878` and a six-digit code. Open the address in a browser on a computer on
+     the same network, enter the code once to pair that browser, and paste the key.
+   - **From a USB drive** (TorBox): save the key alone in a file named `torbox.txt` at the root of a
+     USB drive, plug it in and choose **Read the key from a USB drive** (it is also read when the app starts).
+   - **With the controller:** choose the key in **Settings → Debrid** and type it.
+3. Every download now goes through your debrid accounts. Links they don't support download as before.
 
-The TorBox sheet and the computer page also list the files in your TorBox account (torrents, links
-and usenet). Add a link, magnet or NZB on torbox.app, or paste a link on the computer page, then
-press **Download to PS5** when it is ready. Anyone on your network can open the computer page.
+### From a computer
+
+The computer page also:
+
+- sends a link to the console's downloads, or a link or magnet to TorBox;
+- lists the files in your TorBox account (torrents, links and usenet) with **Download to PS5**;
+- with **Download what becomes ready in TorBox by itself** on, downloads whatever you add on
+  torbox.app as soon as TorBox has it, while Overdrive is open;
+- shows the console's downloads with speed and time left, and pauses, resumes, removes and reorders them;
+- opens **source lists** in [FPKGi](https://github.com/devcrono/FPKGi)'s JSON format (a `DATA` object
+  mapping each file's link to its `name` and `size`) and downloads from them.
+
+Only paired browsers can use it; **Settings → Debrid → Forget paired browsers** unpairs them all.
 
 ## Updates
 

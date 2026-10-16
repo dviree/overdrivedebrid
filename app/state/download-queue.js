@@ -5,6 +5,7 @@
 // MODIFIED: any provider that needs the console browser (LinkVault's mirrors, Akirabox, Datanodes)
 // has its file link captured from the browser, like Vikingfile's.
 // MODIFIED: with a TorBox key every source resolves through TorBox, direct links included.
+// MODIFIED: move(id, direction) reorders the queue, for the computer page.
 
 import { INCOMPLETE_PART, STALE_PARTIAL, cause } from '../downloads/errors.js';
 import { t } from '../i18n/core.js';
@@ -1214,6 +1215,14 @@ import { VIKING_PREFIX, capturedVikingFile, describeVikingCapture, linkPageMetad
         }
         pump();
         return id;
+      },
+      /** Moves a download one place earlier (-1) or later (1) in the queue; the first queued one starts next. */
+      move(id, direction) {
+        const from = jobs.indexOf(find(id));
+        const to = from + (direction < 0 ? -1 : 1);
+        if (to < 0 || to >= jobs.length) return;
+        [jobs[from], jobs[to]] = [jobs[to], jobs[from]];
+        change();
       },
       pause(id) {
         const job2 = find(id);

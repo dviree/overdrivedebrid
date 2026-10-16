@@ -1,13 +1,14 @@
 // ../pub-game-store/native/state/downloads.js
 // reconstructed from the esbuild bundle in eboot.bin
-// MODIFIED: sources resolve through TorBox when its API key is set.
+// MODIFIED: sources resolve through TorBox and Premiumize when their API keys are set.
 
 import { t } from '../i18n/core.js';
 import { getGame } from './catalog.js';
 import { createDownloadQueue } from './download-queue.js';
 import { createSourceResolver } from './download-sources.js';
-import { getTorboxKey } from './debrid.js';
+import { getDebridKey, getTorboxKey } from './debrid.js';
 import { createTorboxResolver } from './torbox.js';
+import { createPremiumizeResolver } from './premiumize.js';
 import { createMockDownloadQueue } from './mock-download-queue.js';
 import { consoleRoots } from './roots.js';
 import { createShadowMountProbe } from './shadowmount.js';
@@ -28,7 +29,12 @@ import { Archives, BrowserCapture, DownloadFormats, Downloads, FileSystem, Http,
     notifications: Notifications,
     power: Power,
     linking: Linking,
-    sources: createTorboxResolver({ http: Http, fallback: createSourceResolver({ http: Http }), apiKey: getTorboxKey }),
+    // TorBox, then Premiumize, then the host itself: each passes on what it won't take.
+    sources: createTorboxResolver({
+      http: Http,
+      apiKey: getTorboxKey,
+      fallback: createPremiumizeResolver({ http: Http, apiKey: () => getDebridKey("premiumize"), fallback: createSourceResolver({ http: Http }) })
+    }),
     packages: Packages,
     browserCapture: BrowserCapture,
     releasesOf: (id) => getGame(id)?.releases || []
