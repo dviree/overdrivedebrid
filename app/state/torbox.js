@@ -30,9 +30,9 @@ ${value}\r
 `;
     return { body, type: `multipart/form-data; boundary=${boundary}` };
   }
-  function createTorboxResolver({ http, fallback, apiKey, wait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms)), now = Date.now }) {
-    async function call(path, { key, signal, method = "GET", form } = {}) {
-      const options = { method, signal, maxBytes: 1024 * 1024, followRedirects: false, headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } };
+  function torboxApi(http) {
+    return async function call(path, { key, signal, method = "GET", form } = {}) {
+      const options = { method, signal, maxBytes: 4 * 1024 * 1024, followRedirects: false, headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } };
       if (form) {
         const { body, type } = multipart(form);
         options.body = body;
@@ -49,7 +49,78 @@ ${value}\r
         throw new Error(`TorBox refused the API key (${detail}). Check it in Settings.`);
       if (!response.ok || payload?.success === false) throw new TorboxRefused(`TorBox: ${detail}`);
       return payload?.data;
+    };
+  }
+  // What the account holds: torrents, web downloads and usenet. Each ready file is one entry the
+  // queue can download, so links added on torbox.app from a computer show up on the console.
+  var KINDS = {
+    torrent: { list: "/torrents/mylist", request: "/torrents/requestdl", param: "torrent_id" },
+    webdl: { list: "/webdl/mylist", request: "/webdl/requestdl", param: "web_id" },
+    usenet: { list: "/usenet/mylist", request: "/usenet/requestdl", param: "usenet_id" }
+  };
+  async function requestLink(call, key, { kind, id, file }, signal) {
+    const { request, param } = KINDS[kind];
+    const url = await call(`${request}?token=${encodeURIComponent(key)}&${param}=${encodeURIComponent(id)}&file_id=${encodeURIComponent(file)}&zip_link=false&redirect=false`, { key, signal });
+    if (typeof url !== "string") throw new Error("TorBox did not return a download link. Retry.");
+    return { url: webURL(url).url, rejectHtml: true };
+  }
+  var baseName = (name) => String(name || "").split("/").pop().replace(/[\x00-\x1f\\]/g, "").slice(-200) || "torbox-file";
+  function createTorboxAccount({ http, apiKey }) {
+    const call = torboxApi(http);
+    async function list({ signal } = {}) {
+      const key = apiKey();
+      if (!key) throw new Error("Add your TorBox API key first.");
+      const entries = [];
+      for (const kind of Object.keys(KINDS)) {
+        let items;
+        try {
+          items = await call(`${KINDS[kind].list}?bypass_cache=true`, { key, signal });
+        } catch (error2) {
+          if (error2 instanceof TorboxRefused) continue;
+          throw error2;
+        }
+        for (const item of Array.isArray(items) ? items : []) {
+          const ready = Boolean(item?.download_finished || item?.download_present);
+          for (const file of item?.files || []) {
+            entries.push({
+              key: `${kind}-${item.id}-${file.id}`,
+              kind,
+              id: item.id,
+              file: file.id,
+              name: baseName(file.short_name || file.name),
+              item: item.name || "",
+              sizeBytes: Number(file.size) || null,
+              ready,
+              state: String(item.download_state || ""),
+              progress: typeof item.progress === "number" ? item.progress : null,
+              added: Date.parse(item.created_at || "") || 0
+            });
+          }
+          if (!item?.files?.length) entries.push({ key: `${kind}-${item?.id}`, kind, id: item?.id, file: null, name: baseName(item?.name), item: "", sizeBytes: Number(item?.size) || null, ready: false, state: String(item?.download_state || ""), progress: typeof item?.progress === "number" ? item.progress : null, added: Date.parse(item?.created_at || "") || 0 });
+        }
+      }
+      return entries.sort((a, b) => b.added - a.added || a.name.localeCompare(b.name)).slice(0, 200);
     }
+    // A release the download queue takes like a catalog one; the link is asked for when it starts,
+    // so a TorBox link that expired is asked for again.
+    function release(entry2) {
+      if (!entry2.ready || entry2.file == null) throw new Error("TorBox hasn't finished this one yet.");
+      const ext = /\.([a-z0-9]{1,8})$/i.exec(entry2.name)?.[1]?.toLowerCase();
+      return {
+        id: `torbox-${entry2.key}`,
+        filename: entry2.name,
+        format: ext && ["pkg", "fpkg", "exfat", "ffpkg", "ffpfs", "ffpfsc", "zip", "rar", "7z"].includes(ext) ? ext : "binary",
+        url: "https://torbox.app/",
+        provider: "TorBox",
+        label: entry2.item || entry2.name,
+        sizeBytes: entry2.sizeBytes,
+        torbox: { kind: entry2.kind, id: entry2.id, file: entry2.file }
+      };
+    }
+    return { list, release };
+  }
+  function createTorboxResolver({ http, fallback, apiKey, wait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms)), now = Date.now }) {
+    const call = torboxApi(http);
     async function cached(link, key, signal) {
       try {
         const list = await call(`/webdl/mylist?bypass_cache=true`, { key, signal });
@@ -83,12 +154,14 @@ ${value}\r
       onStatus?.(null);
       const item = await finished(id, key, signal, onStatus);
       const file = [...item.files].sort((a, b) => (b.size || 0) - (a.size || 0))[0];
-      const url = await call(`/webdl/requestdl?token=${encodeURIComponent(key)}&web_id=${encodeURIComponent(id)}&file_id=${encodeURIComponent(file.id)}&zip_link=false&redirect=false`, { key, signal });
-      if (typeof url !== "string") throw new Error("TorBox did not return a download link. Retry.");
-      return { url: webURL(url).url, rejectHtml: true };
+      return requestLink(call, key, { kind: "webdl", id, file: file.id }, signal);
     }
     async function resolve2(release, options = {}) {
       const key = apiKey();
+      if (release.torbox) {
+        if (!key) throw new Error("This download is from TorBox: add your TorBox API key in Settings.");
+        return requestLink(call, key, release.torbox, options.signal);
+      }
       // A link captured from the console browser is already the final file, tied to that session.
       if (!key || options.directURL || release.manifestUrl || !(release.browserUrl || release.url)) return fallback.resolve(release, options);
       try {
@@ -102,4 +175,4 @@ ${value}\r
     return { resolve: resolve2, debrid: () => Boolean(apiKey()) };
   }
 
-export { createTorboxResolver };
+export { createTorboxAccount, createTorboxResolver };

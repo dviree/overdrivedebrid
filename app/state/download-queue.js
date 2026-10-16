@@ -273,7 +273,7 @@ import { VIKING_PREFIX, capturedVikingFile, describeVikingCapture, linkPageMetad
             job2.options = formats.manifest(await response.json());
           } else {
             if (!job2.release.url && !job2.release.browserUrl) throw new Error("This release has no download URL.");
-            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" || sources.debrid?.() ? await sources.resolve(job2.release, { signal, directURL: job2.directURL, onStatus: debridStatus(job2) }) : { url: webURL(job2.release.url).url };
+            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" || sources.debrid?.() || job2.release.torbox ? await sources.resolve(job2.release, { signal, directURL: job2.directURL, onStatus: debridStatus(job2) }) : { url: webURL(job2.release.url).url };
             delete job2.phase;
             delete job2.debridProgress;
             job2.options = {
