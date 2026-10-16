@@ -31,6 +31,8 @@ import { VIKING_PREFIX, capturedVikingFile, describeVikingCapture, linkPageMetad
   // no staging behind, so each one costs a moment. They are checked on the console: nothing counts them.
   var KNOWN_PASSWORDS = ["DLPSGAME.COM", "[DLPSGAME.COM]", "www.DLPSGAME.COM", "SuperPSX", "downloadgameps3.com", "hako"];
   var PASSWORD_FAILURE = /archive password|passphrase/i;
+  // A host's web page is kilobytes; a file this big with no known headers is the game itself.
+  var WEB_PAGE_BYTES = 4 * 1024 ** 2;
   function durable(fs, stateDir2) {
     try {
       fs.mkdir(stateDir2, { recursive: true });
@@ -396,8 +398,9 @@ import { VIKING_PREFIX, capturedVikingFile, describeVikingCapture, linkPageMetad
       if (refusal) throw new Error(refusal);
       // A source listed without a format is kept only for what its headers turn out to be: when they
       // are none Overdrive knows, the host sent something else, usually a web page. Leaving it as a
-      // downloaded ".binary" (issue #8) told the user nothing.
-      if (!kind && job2.release.format === "binary") throw new Error("Not a game file: the host sent something else.");
+      // downloaded ".binary" (issue #8) told the user nothing. Only a small file reads as one, though:
+      // gigabytes the headers don't name are still the game, in a format not checked (issue #24).
+      if (!kind && job2.release.format === "binary" && (fs.stat(job2.downloadDestination)?.size || 0) < WEB_PAGE_BYTES) throw new Error("Not a game file: the host sent something else.");
       if (!kind) return;
       const artifact2 = formats.detected(job2.release, job2.root, kind);
       if (artifact2.nextAction === "extraction-required") {

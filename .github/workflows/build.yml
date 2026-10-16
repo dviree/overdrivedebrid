@@ -62,6 +62,12 @@ jobs:
           path: ps5-react/.deps
           key: deps-${{ hashFiles('ps5-react/dependencies.lock.json') }}
 
+      - name: Stamp the fork build
+        # Each build is one version above the last (fork.js), so the app updates to it.
+        run: |
+          sed -i "s/^  var FORK = [0-9]*;/  var FORK = $GITHUB_RUN_NUMBER;/" app/fork.js
+          grep -q "var FORK = $GITHUB_RUN_NUMBER;" app/fork.js
+
       - name: Build
         working-directory: ps5-react
         run: python3 tools/build_ps5.py --app-dir "$GITHUB_WORKSPACE/app" --llvm /usr/bin
@@ -88,29 +94,20 @@ jobs:
       - name: Draft release
         # Only people with write access see a draft, and the in-app update feed
         # (releases/latest) never returns one, so a test build reaches nobody else.
-        # The draft is named after app/version.js; building again replaces its files
-        # and moves it to this commit. A version already published is left alone.
+        # The draft is named after app/version.js and this build's number (fork.js):
+        # publishing it offers it to every console as an update. Older drafts are
+        # earlier builds of the same code, so they are removed.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(sed -n 's/.*var VERSION = "\([^"]*\)".*/\1/p' app/version.js)
           test -n "$version" || { echo "no VERSION in app/version.js" >&2; exit 1; }
-          tag="v$version"
+          tag="v$version.$GITHUB_RUN_NUMBER"
           assets="Overdrive.exfat update.zip"
-          draft=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq ".[] | select(.tag_name == \"$tag\") | .draft")
-          case "$draft" in
-            "")
-              gh release create "$tag" $assets --draft --target "$GITHUB_SHA" \
-                --title "Overdrive $tag" --notes "Test build of $GITHUB_SHA." ;;
-            true)
-              gh release edit "$tag" --target "$GITHUB_SHA" --notes "Test build of $GITHUB_SHA."
-              gh release upload "$tag" $assets --clobber ;;
-            *)
-              echo "$tag is already published: raise the version in app/version.js" >&2
-              # A push still builds (the files are in the Overdrive artifact); Run workflow fails.
-              test "$GITHUB_EVENT_NAME" = push || exit 1
-              exit 0 ;;
-          esac
+          for old in $(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | select(.draft) | .tag_name'); do
+            gh release delete "$old" --yes || true
+          done
+          gh release create "$tag" $assets --draft --target "$GITHUB_SHA" \
+            --title "Overdrive $tag" --notes "Build of $GITHUB_SHA. Publish it to update every console."
           gh release view "$tag" --json isDraft,tagName,assets \
             --jq '"\(.tagName) draft=\(.isDraft) " + ([.assets[] | "\(.name) \(.size)"] | join(", "))'
