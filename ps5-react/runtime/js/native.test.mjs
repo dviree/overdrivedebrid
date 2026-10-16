@@ -3,7 +3,7 @@
 // Additional attribution term: see LICENSE-ATTRIBUTION.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {acquireImage, Archives, BrowserCapture, Controller, Downloads, FileSystem, Http, LocalNetwork, Power, Sound} from './native.js';
+import {acquireImage, Archives, BrowserCapture, Controller, Downloads, FileSystem, Http, LocalNetwork, LocalServer, Power, Sound} from './native.js';
 import {setFrameBatcher} from './frame.js';
 
 test('native network tasks deliver progress, release listeners and stop polling', async () => {
@@ -345,6 +345,40 @@ test('browser capture delivers only its result and cancellation rejects as Abort
     second.cancel(); assert.deepEqual(cancelled, [2]);
     snapshots = [{id: 2, state: 'cancelled'}]; tick();
     await assert.rejects(second.done, {name: 'AbortError'});
+  } finally {
+    globalThis.setInterval = originalInterval; globalThis.clearInterval = originalClear;
+    delete globalThis.__ps5ReactNative;
+  }
+});
+
+test('a local server hands requests to its handler and sends back what it answers', async () => {
+  const originalInterval = globalThis.setInterval, originalClear = globalThis.clearInterval;
+  let tick, requests = [];
+  const calls = [];
+  globalThis.setInterval = callback => { tick = callback; return 7; };
+  globalThis.clearInterval = id => calls.push(['clear', id]);
+  globalThis.__ps5ReactNative = {server: {
+    listen: port => calls.push(['listen', port]),
+    poll: () => { const result = requests; requests = []; return result; },
+    respond: (...args) => { calls.push(['respond', ...args]); return true; },
+    close: () => calls.push(['close']),
+    address: () => '192.168.0.20',
+  }};
+  try {
+    const server = LocalServer.listen({port: 8080, handler: ({method, path, body}) => path === '/fail' ? Promise.reject(new Error('nope'))
+      : {type: 'application/json', body: {method, path, body}}});
+    assert.equal(LocalServer.address(), '192.168.0.20');
+    requests = [{id: 1, method: 'POST', path: '/api', address: '192.168.0.5', contentType: 'text/plain', body: 'hi'},
+      {id: 2, method: 'GET', path: '/fail', address: '192.168.0.5', contentType: '', body: ''}];
+    tick();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(calls.slice(1), [
+      ['respond', 1, 200, 'application/json', '{"method":"POST","path":"/api","body":"hi"}'],
+      ['respond', 2, 500, 'text/plain; charset=utf-8', 'nope\n'],
+    ]);
+    server.close();
+    assert.deepEqual(calls.slice(3), [['clear', 7], ['close']]);
+    assert.deepEqual(calls[0], ['listen', 8080]);
   } finally {
     globalThis.setInterval = originalInterval; globalThis.clearInterval = originalClear;
     delete globalThis.__ps5ReactNative;

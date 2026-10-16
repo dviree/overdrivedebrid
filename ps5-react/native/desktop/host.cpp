@@ -8,6 +8,7 @@
 #include "removals.hpp"
 #include "browser_capture.hpp"
 #include "lan.hpp"
+#include "local_server.hpp"
 #include "app_config.hpp"
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
@@ -181,6 +182,7 @@ struct Host {
     archives::stop();
     browser_capture::stop();
     lan::stop();
+    local_server::close();
   packages::stop();
   removals::stop();
   network::stop();

@@ -558,6 +558,52 @@ export const LocalNetwork = Object.freeze({
   },
 });
 
+let serverTimer = null, serverHandler = null;
+function answer(id, reply) {
+  const {status = 200, type = 'text/plain; charset=utf-8', body = ''} = reply ?? {};
+  host().server.respond(id, status, type, typeof body === 'string' ? body : JSON.stringify(body));
+}
+function pollServer() {
+  let requests;
+  try { requests = host().server.poll(); } catch (error) { console.error('LocalServer.poll failed:', error); return; }
+  for (const request of requests) {
+    const {id, ...shown} = request;
+    let reply;
+    try { reply = serverHandler(Object.freeze(shown)); }
+    catch (error) { reply = {status: 500, body: `${error?.message ?? error}\n`}; }
+    Promise.resolve(reply).then(value => answer(id, value), error => answer(id, {status: 500, body: `${error?.message ?? error}\n`}))
+      .catch(error => console.error('LocalServer.respond failed:', error));
+  }
+}
+
+/**
+ * An HTTP server on the local network (ABI v18), so a computer's browser can reach the app at
+ * `http://<address()>:<port>/`. One server at a time; `handler(request)` gets
+ * `{method, path, address, contentType, body}` and returns (or resolves to)
+ * `{status?, type?, body?}`. A request it leaves unanswered for 15 s gets a 504. Anyone on the
+ * network can send requests: check what they ask before acting on it.
+ */
+export const LocalServer = Object.freeze({
+  listen({port, handler}) {
+    if (typeof handler !== 'function') throw new TypeError('LocalServer.listen: handler must be a function');
+    host().server.listen(port);
+    serverHandler = handler;
+    if (serverTimer === null) serverTimer = setInterval(pollServer, 100);
+    return Object.freeze({
+      port,
+      close() {
+        if (serverHandler !== handler) return;
+        serverHandler = null;
+        clearInterval(serverTimer);
+        serverTimer = null;
+        host().server.close();
+      },
+    });
+  },
+  /** The console's IPv4 address on the network, or null without one. */
+  address: () => host().server.address(),
+});
+
 /** Read-only, filename-bound Vikingfile capture on PS5; no browser data is retained. */
 export const BrowserCapture = Object.freeze({
   capture({prefix = 'https://vikingfile.com/d/', suffix, timeoutSeconds = 180}) {

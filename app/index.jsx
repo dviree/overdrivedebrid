@@ -1,5 +1,6 @@
 // ../pub-game-store/native/index.jsx
 // reconstructed from the esbuild bundle in eboot.bin
+// MODIFIED: the page for the computer's browser (remote.js) starts with the app.
 
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
@@ -11,6 +12,7 @@ import { GameScreen } from './game/index.jsx';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { SearchScreen } from './search/index.jsx';
 import { getGame, warmCovers } from './state/catalog.js';
+import { startRemote } from './state/remote.js';
 import { NavProvider, useIsImmersive, useNavActions, useNavState } from './state/nav.jsx';
 import { StoreFreeze, StoreProvider } from './state/store.jsx';
 import { Header } from './ui/Header.jsx';
@@ -39,6 +41,7 @@ import { useInterfaceSounds } from './ui/sounds.js';
       const id = setTimeout(warmCovers, WARM_DELAY_MS);
       return () => clearTimeout(id);
     }, []);
+    (0, useEffect)(startRemote, []);
     const { top } = useNavState();
     const onBrowse = top.name === "browse";
     const key = top.name === "game" ? `game:${top.id}` : top.name;
