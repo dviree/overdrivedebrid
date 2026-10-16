@@ -13,7 +13,7 @@ import { SideSheet } from './SideSheet.jsx';
 import { colors } from './colors.js';
 import { setNavigationHaptics, useNavigationHaptics } from './haptics.js';
 import { LIMITS, setSpeedLimit, useSpeedLimit } from '../state/speed-limit.js';
-import { setTorboxKey, useTorboxKey } from '../state/debrid.js';
+import { SERVICES, getDebridKey, setDebridKey, useDebridKeys } from '../state/debrid.js';
 import { URLDialog } from '../downloads/URLDialog.jsx';
 import { TorboxSheet } from './TorboxSheet.jsx';
 import { useState } from 'react';
@@ -71,20 +71,22 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
     const t2 = useT();
     const choice2 = languageChoice();
     const vibration = useNavigationHaptics();
-    const torboxKey = useTorboxKey();
-    const [editingKey, setEditingKey] = (0, useState)(false);
+    const debridKeys = useDebridKeys();
+    const anyKey = Object.values(debridKeys).some(Boolean);
+    const [editingKey, setEditingKey] = (0, useState)(null);
     const [torbox, setTorbox] = (0, useState)(false);
-    // TorBox opens its own sheet (the key, the account's files) in place of this one. The key is typed on the URL keyboard (lowercase letters, digits and dashes, as TorBox's keys
-    // are) in place of the sheet, which comes back when it closes. An empty key turns TorBox off.
+    // The debrid sheet (keys, TorBox's files, the computer page) opens in place of this one. A key is
+    // typed on the URL keyboard in place of that sheet, which comes back when it closes. An empty key
+    // turns that service off.
     if (editingKey) return /* @__PURE__ */ (0, jsx)(URLDialog, {
-      title: t2("settings.torboxKeyTitle"),
-      detail: t2("settings.torboxKeyDetail"),
-      initial: torboxKey,
+      title: t2("settings.debridKeyTitle", { service: SERVICES[editingKey].name }),
+      detail: t2("settings.debridKeyDetail", { site: SERVICES[editingKey].site }),
+      initial: getDebridKey(editingKey),
       confirmLabel: t2("settings.torboxKeyConfirm"),
-      submit: setTorboxKey,
-      onClose: () => setEditingKey(false)
+      submit: (value) => setDebridKey(editingKey, value),
+      onClose: () => setEditingKey(null)
     });
-    if (torbox) return /* @__PURE__ */ (0, jsx)(TorboxSheet, { onClose: () => setTorbox(false), onEditKey: () => setEditingKey(true) });
+    if (torbox) return /* @__PURE__ */ (0, jsx)(TorboxSheet, { onClose: () => setTorbox(false), onEditKey: (service) => setEditingKey(service) });
     const pick2 = (code) => {
       chooseLanguage(code);
       onClose();
@@ -94,7 +96,7 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
     return /* @__PURE__ */ (0, jsx)(SideSheet, { title: t2("settings.title"), onClose, children: /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 6, padding: 9, paddingBottom: 48 }, children: [
       /* @__PURE__ */ (0, jsx)(SectionLabel, { icon: "download", title: t2("settings.downloads") }),
       /* @__PURE__ */ (0, jsx)(SpeedLimit, {}),
-      /* @__PURE__ */ (0, jsx)(View, { focusKey: "settings:torbox", onPress: () => setTorbox(true), style: (_state) => [{ position: "relative", flexDirection: "row", alignItems: "center", gap: 24, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 18 }, _state.focused ? { backgroundColor: "#212125" } : null], children: /* @__PURE__ */ (0, jsx)(LanguageFace, { name: t2("settings.torbox"), detail: torboxKey ? t2("settings.torboxOn") : t2("settings.torboxOff"), checked: Boolean(torboxKey) }) }),
+      /* @__PURE__ */ (0, jsx)(View, { focusKey: "settings:torbox", onPress: () => setTorbox(true), style: (_state) => [{ position: "relative", flexDirection: "row", alignItems: "center", gap: 24, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 18 }, _state.focused ? { backgroundColor: "#212125" } : null], children: /* @__PURE__ */ (0, jsx)(LanguageFace, { name: t2("settings.torbox"), detail: anyKey ? t2("settings.torboxOn") : t2("settings.torboxOff"), checked: anyKey }) }),
       /* @__PURE__ */ (0, jsx)(SectionLabel, { title: t2("settings.controller") }),
       /* @__PURE__ */ (0, jsx)(View, { focusKey: "settings:vibration", onPress: () => setNavigationHaptics(!vibration), style: (_state) => [{ position: "relative", flexDirection: "row", alignItems: "center", gap: 24, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 18 }, _state.focused ? { backgroundColor: "#212125" } : null], children: /* @__PURE__ */ (0, jsx)(LanguageFace, { name: t2("settings.vibration"), detail: t2("settings.vibrationDetail"), checked: vibration }) }),
       /* @__PURE__ */ (0, jsx)(SectionLabel, { icon: "languages", title: t2("language.title"), detail: t2("language.subtitle") }),

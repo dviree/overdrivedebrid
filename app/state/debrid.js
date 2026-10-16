@@ -1,7 +1,7 @@
-// ADDED: the TorBox API key, kept in settings.json beside the speed limit. Set, every download
-// goes through TorBox (torbox.js); cleared, downloads resolve as before. Typing a key with the
-// controller is slow, so it is also read from a torbox.txt at the root of a USB drive, written on a
-// computer.
+// ADDED: the debrid accounts, kept in settings.json beside the speed limit: a TorBox and a
+// Premiumize API key. With either set, every download goes through them (torbox.js, premiumize.js);
+// with none, downloads resolve as before. Typing a key with the controller is slow, so the TorBox
+// key is also read from a torbox.txt at the root of a USB drive, or pasted from a computer (remote.js).
 
 import { useEffect, useState } from 'react';
 import { consoleRoots } from './roots.js';
@@ -9,30 +9,46 @@ import { loadList, saveList } from './saved.js';
 import { FileSystem, Platform } from '@ps5-react/core';
 
   var SETTINGS = "settings.json";
-  var valid = (value) => typeof value === "string" && /^[A-Za-z0-9-]{8,128}$/.test(value);
-  var saved = loadList(SETTINGS, "settings").torboxKey;
-  var torboxKey = valid(saved) ? saved : "";
+  // The services, in the order a link is tried.
+  var SERVICES = {
+    torbox: { name: "TorBox", setting: "torboxKey", site: "torbox.app/settings" },
+    premiumize: { name: "Premiumize", setting: "premiumizeKey", site: "premiumize.me/account" }
+  };
+  var valid = (value) => typeof value === "string" && /^[A-Za-z0-9_-]{8,128}$/.test(value);
+  var settings = () => loadList(SETTINGS, "settings");
+  var keys = Object.fromEntries(Object.entries(SERVICES).map(([service, { setting }]) => [service, valid(settings()[setting]) ? settings()[setting] : ""]));
   var listeners = /* @__PURE__ */ new Set();
-  var getTorboxKey = () => torboxKey;
-  function setTorboxKey(value) {
-    const key = String(value ?? "").trim();
-    if (key && !valid(key)) throw new Error("That isn't a TorBox API key. Copy it from torbox.app/settings.");
-    torboxKey = key;
-    const { torboxKey: _old, ...settings } = loadList(SETTINGS, "settings");
-    saveList(SETTINGS, "settings", key ? { ...settings, torboxKey: key } : settings);
-    for (const listener of listeners) listener(key);
+  var notify = () => {
+    for (const listener of listeners) listener({ ...keys });
+  };
+  function saveSetting(name, value) {
+    const { [name]: _old, ...rest } = settings();
+    saveList(SETTINGS, "settings", value === void 0 || value === "" || value === false ? rest : { ...rest, [name]: value });
   }
-  function useTorboxKey() {
-    const [key, setKey] = (0, useState)(torboxKey);
+  var getDebridKey = (service) => keys[service] ?? "";
+  function setDebridKey(service, value) {
+    const entry2 = SERVICES[service];
+    if (!entry2) throw new Error(`Unknown debrid service ${service}.`);
+    const key = String(value ?? "").trim();
+    if (key && !valid(key)) throw new Error(`That isn't a ${entry2.name} API key. Copy it from ${entry2.site}.`);
+    keys[service] = key;
+    saveSetting(entry2.setting, key);
+    notify();
+  }
+  var anyDebrid = () => Object.values(keys).some(Boolean);
+  function useDebridKeys() {
+    const [value, setValue] = (0, useState)({ ...keys });
     (0, useEffect)(() => {
-      listeners.add(setKey);
+      listeners.add(setValue);
       return () => {
-        listeners.delete(setKey);
+        listeners.delete(setValue);
       };
     }, []);
-    return key;
+    return value;
   }
-
+  var getTorboxKey = () => keys.torbox;
+  var setTorboxKey = (value) => setDebridKey("torbox", value);
+  var useTorboxKey = () => useDebridKeys().torbox;
   var KEY_FILES = ["torbox.txt", "TORBOX.TXT", "torbox-key.txt"];
   // The first valid key in a key file on any drive, set as the key; the key found, or "".
   function importTorboxKey() {
@@ -42,9 +58,9 @@ import { FileSystem, Platform } from '@ps5-react/core';
         try {
           const path = `${root2}/${name}`;
           if (!FileSystem.exists(path)) continue;
-          const key = String(FileSystem.readFile(path)).replace(/^\uFEFF/, "").trim().split(/\s+/)[0] || "";
+          const key = String(FileSystem.readFile(path)).replace(/^﻿/, "").trim().split(/\s+/)[0] || "";
           if (!valid(key)) continue;
-          if (key !== torboxKey) setTorboxKey(key);
+          if (key !== keys.torbox) setTorboxKey(key);
           return key;
         } catch (error2) {
           console.log(`[torbox] ${root2}/${name} not read: ${error2.message}`);
@@ -53,6 +69,8 @@ import { FileSystem, Platform } from '@ps5-react/core';
     }
     return "";
   }
-  if (!torboxKey) importTorboxKey();
+  if (!keys.torbox) importTorboxKey();
+  // A small setting of its own kind (a flag, a list), stored the same way.
+  var readSetting = (name, fallback) => settings()[name] ?? fallback;
 
-export { getTorboxKey, importTorboxKey, setTorboxKey, useTorboxKey };
+export { SERVICES, anyDebrid, getDebridKey, getTorboxKey, importTorboxKey, readSetting, saveSetting, setDebridKey, setTorboxKey, useDebridKeys, useTorboxKey };

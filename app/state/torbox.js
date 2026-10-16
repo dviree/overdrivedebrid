@@ -30,8 +30,12 @@ ${value}\r
 `;
     return { body, type: `multipart/form-data; boundary=${boundary}` };
   }
-  function torboxApi(http) {
-    return async function call(path, { key, signal, method = "GET", form } = {}) {
+  // TorBox limits how often an account calls it; a 429 says how long to wait (Retry-After, in
+  // seconds), which is waited up to a minute, three times, before the call fails.
+  var THROTTLE_TRIES = 3;
+  var defaultWait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms));
+  function torboxApi(http, wait = defaultWait) {
+    return async function call(path, { key, signal, method = "GET", form } = {}, tries = 0) {
       const options = { method, signal, maxBytes: 4 * 1024 * 1024, followRedirects: false, headers: { Authorization: `Bearer ${key}`, Accept: "application/json" } };
       if (form) {
         const { body, type } = multipart(form);
@@ -39,6 +43,11 @@ ${value}\r
         options.headers["Content-Type"] = type;
       }
       const response = await http.request(`${API}${path}`, options);
+      if (response.status === 429 && tries < THROTTLE_TRIES && !signal?.aborted) {
+        const seconds = Number(response.headers?.["retry-after"]);
+        await wait(Math.min(60, Number.isFinite(seconds) && seconds > 0 ? seconds : 5 * (tries + 1)) * 1e3);
+        return call(path, { key, signal, method, form }, tries + 1);
+      }
       let payload = null;
       try {
         payload = await response.json();
@@ -128,7 +137,7 @@ ${value}\r
     return { add, list, release };
   }
   function createTorboxResolver({ http, fallback, apiKey, wait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms)), now = Date.now }) {
-    const call = torboxApi(http);
+    const call = torboxApi(http, wait);
     async function cached(link, key, signal) {
       try {
         const list = await call(`/webdl/mylist?bypass_cache=true`, { key, signal });
@@ -180,7 +189,7 @@ ${value}\r
         return fallback.resolve(release, options);
       }
     }
-    return { resolve: resolve2, debrid: () => Boolean(apiKey()) };
+    return { resolve: resolve2, debrid: () => Boolean(apiKey()) || Boolean(fallback?.debrid?.()) };
   }
 
 export { createTorboxAccount, createTorboxResolver };
