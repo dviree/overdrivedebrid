@@ -3,6 +3,8 @@
 .build/
 dist/
 node_modules/
+/Overdrive.exfat
+/update.zip
 
 # Python
 __pycache__/

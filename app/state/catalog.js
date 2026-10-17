@@ -4,6 +4,7 @@
 import { features, games, twins } from '../data/catalog.js';
 import { formatDate2, formatNumber2, t } from '../i18n/core.js';
 import { createPageCache } from './page-cache.js';
+import { pausedFilter } from './paused-hosts.js';
 import { createReleaseCache } from './release-cache.js';
 import { FileSystem, Image } from '@ps5-react/core';
 
@@ -48,6 +49,18 @@ import { FileSystem, Image } from '@ps5-react/core';
       return this.id;
     }
   };
+  // A game whose every host is paused (paused-hosts.js) leaves the shared lists in place, so no screen
+  // shows a game with nothing to download. So does one with no source at all (2026-10-17: 563 games,
+  // nearly all PS4, whose only links sit in Archive.org collections now restricted), unless another
+  // edition of it can be downloaded, which its Download button then offers; an edition with no source
+  // is never offered. The data stays: a game that gains a source shows again. The lists are the data
+  // module's own arrays, which every screen reads after this module has run.
+  var playable = (game) => game.providers?.length > 0 && !game.providers.every(pausedFilter);
+  var playableWorks = new Set([...games, ...twins].filter((game) => playable(game) && game.work != null).map((game) => game.work));
+  var hidden = (game, listed2) => game.providers?.length ? !playable(game) : !listed2 || !playableWorks.has(game.work);
+  for (const list of [games, twins])
+    for (let index = list.length - 1; index >= 0; index--)
+      if (hidden(list[index], list === games)) list.splice(index, 1);
   var entries = [...games, ...twins];
   var _a;
   for (const game of entries) {
@@ -75,9 +88,10 @@ import { FileSystem, Image } from '@ps5-react/core';
     Image.warm(sortGames(games, "relevance").filter((game) => game.art.cover).map((game) => game.art.cover));
   }
   var SORTS = [
+    // New releases first: the library's sort menu opens on it.
+    { id: "newest", compare: (a, b) => b.releaseDate.localeCompare(a.releaseDate) },
     // Most popular puts the games Archive.org serves first: the app downloads them fastest.
     { id: "relevance", compare: (a, b) => fromArchive(b) - fromArchive(a) || b.recommendations - a.recommendations },
-    { id: "newest", compare: (a, b) => b.releaseDate.localeCompare(a.releaseDate) },
     { id: "rating", compare: (a, b) => (b.metacritic ?? 0) - (a.metacritic ?? 0) },
     { id: "size", compare: (a, b) => (b.sizeGb ?? 0) - (a.sizeGb ?? 0) },
     { id: "title", compare: (a, b) => a.title.localeCompare(b.title) }
@@ -119,7 +133,7 @@ import { FileSystem, Image } from '@ps5-react/core';
     return words.map((word, i) => i ? word[0].toUpperCase() + word.slice(1) : word).join("");
   }
   var CDN_HOST = "overdrive cdn";
-  var hosts = [...hostCounts].filter(([host2, count]) => count >= MIN_HOST_GAMES || host2 === CDN_HOST).sort((a, b) => (b[0] === CDN_HOST) - (a[0] === CDN_HOST) || b[1] - a[1]).map(([host2]) => ({ value: host2, name: HOST_NAMES[host2] ?? host2 }));
+  var hosts = [...hostCounts].filter(([host2, count]) => (count >= MIN_HOST_GAMES || host2 === CDN_HOST) && !pausedFilter(host2)).sort((a, b) => (b[0] === CDN_HOST) - (a[0] === CDN_HOST) || b[1] - a[1]).map(([host2]) => ({ value: host2, name: HOST_NAMES[host2] ?? host2 }));
   var onCdn = (game) => Boolean(game.providers?.includes(CDN_HOST));
   var SIZES = [
     { value: "small", label: "filters.size.small", test: (gb) => gb < 10 },

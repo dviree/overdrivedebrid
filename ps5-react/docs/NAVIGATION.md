@@ -93,9 +93,9 @@ frames.
 
 | Action | Desktop | PS5 |
 | --- | --- | --- |
-| `up`, `down`, `left`, `right` | Arrow keys | D-pad, left stick |
-| `confirm` | Enter | Cross (X) |
-| `back` | Backspace | Circle |
+| `up`, `down`, `left`, `right` | Arrow keys (`up`/`down` also the mouse wheel) | D-pad, left stick |
+| `confirm` | Enter, or a left click (it focuses the element under the pointer first) | Cross (X) |
+| `back` | Backspace, right click | Circle |
 | `l1`, `r1` | Q, E | L1, R1 |
 | `l2`, `r2` | Z, C | L2, R2 (past half travel on the desktop) |
 | `triangle`, `square` | T, F | Triangle, Square |

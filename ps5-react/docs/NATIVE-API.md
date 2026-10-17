@@ -613,7 +613,8 @@ register games. Desktop extraction and successful PS5 linking are not console
 execution evidence.
 
 `Archives.inspect(sources)` reads headers synchronously and returns
-`{kind, refusal}`. `kind` names the leading bytes: `rar`, `7z`, `zip`, `tar`,
+`{kind, refusal, title}`. For a `pkg`, `title` is the title id its content id
+names (the header's `UP0001-CUSA01234_00-...` at 0x40), or `''`. `kind` names the leading bytes: `rar`, `7z`, `zip`, `tar`,
 `tar.gz`, `tar.bz2`, `tar.xz`, `tar.zst`, `pkg` (`\x7FCNT`), `exfat`, `ffpkg` (a
 UFS2 superblock), `ffpfs`, `ffpfsc`, or `''`. For an archive, `refusal` is the
 decoder-memory message above when the headers read so far already declare a
@@ -657,7 +658,28 @@ link that carries that id in its own name, or, on a host known to serve files,
 one that names its archive freely. The last path segment alone is the name, and
 only the app's own probe decides whether a captured URL really is the file.
 Either way the suffix is at most 160 UTF-8 bytes without controls, slashes,
-backslashes or `..`, and the deadline is an integer from 1 to 180 seconds.
+backslashes or `..`, and the deadline is an integer from 1 to 300 seconds.
+`rejected` lists up to six links the app already probed and refused (each an
+`https://` URL of at most 2047 printable bytes); the scan passes over them, so a
+page that keeps a wrong link in memory does not stop the next capture on it.
+The browser's network process keeps the addresses of files it fetched earlier
+in memory it never clears, so a capture first fingerprints every link already
+there that names no game (a known host's free name, a route with no name) while
+its state is still `queued`; it turns `capturing` once that pass ends, and only a
+new such link is taken after it. The app opens the page only then. A link bound
+to the game (the title id, or Vikingfile's expected filename) is accepted however
+old. `resume: true` restarts after a refused link with the last fresh capture's
+fingerprints instead of a new pass, which would count the links that appeared
+since as already known.
+The page prefix, `https://vikingfile.com/f/` with the suffix `/`, returns the
+Vikingfile file page (`/f/<10-character id>`, or its `vik1ngfile.site` alias) a
+LinkVault vault opens; the app reads that page's public metadata and captures
+the named file next, with `resume: true`.
+Anchor mode also accepts the generated routes with no file name of their own,
+1fichier's `a-<n>.1fichier.com/<token>` and Datanodes' `tunnel<n>.dlproxy.uk`
+gateway, and never a host's own page: LinkVault, MediaFire's `www` page, an
+AkiraBox path outside `/download/`, Vikingfile's `/f/` and the `/<12-character id>`
+pages of Datanodes, Filekeeper and Datavaults.
 Snapshots have `id`, `state`, `error` and a matching `url` on
 completion. `cancel()` shuts down the connection, stops the payload's next
 read, and rejects `done` with `AbortError`. Host exit stops and joins the worker.
@@ -670,7 +692,7 @@ it, only after the check, and a download the browser begins can be cancelled. Th
 opens it with `Linking.openURL` after submitting capture. Only a uniquely
 identified browser network process is read, with identity checked before every
 read. Scanning is limited to anonymous readable/writable nonexecutable user
-pages, 64 KiB every 8 ms, 1 GiB per session. No dumps, cookies, arbitrary
+pages, 64 KiB every 8 ms, 3 GiB per session. No dumps, cookies, arbitrary
 process selection or writes. Only complete ASCII/UTF-16 matching routes are
 returned. Provenance: `native/ps5/payloads/browser/README.md` (Orbit Store 1.0.1 and 1.3.5).
 
@@ -678,7 +700,7 @@ A captured URL may already be stale; the app must validate host, decoded
 filename, HTTP status, content type and length before starting immediately.
 Local tests and compilation do not establish console/firmware support.
 
-Native shape: `browser.capture(prefix, suffix, timeoutSeconds)` returns a task
+Native shape: `browser.capture(prefix, suffix, timeoutSeconds, rejected, resume)` returns a task
 ID; `browser.cancel(id)` requests cancellation; `browser.poll()` consumes
 terminal results. Calls submit/poll synchronously on the render thread; all
 payload transport runs on the worker.

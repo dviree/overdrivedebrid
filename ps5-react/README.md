@@ -88,9 +88,9 @@ Refresh.** The first run fetches and builds pinned dependencies when needed.
 
 | Action | Desktop preview | PS5 |
 | --- | --- | --- |
-| Move focus | Arrow keys | D-pad |
-| Activate focused element | Enter | Cross |
-| Navigate back | Backspace | Circle |
+| Move focus | Arrow keys, mouse wheel | D-pad |
+| Activate focused element | Enter, left click on it | Cross |
+| Navigate back | Backspace, right click | Circle |
 | Options (the `options` action) | O | Options |
 | Exit application | Escape | PS button |
 | Stop the development watcher | Ctrl+C in the terminal | — |
