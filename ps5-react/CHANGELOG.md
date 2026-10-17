@@ -7,6 +7,95 @@
   connections at once with bounded requests; `LocalServer.address()` gives the console's IPv4
   address. Tested on Linux with the shared implementation; not yet on PS5 hardware.
 
+## Unreleased — Vikingfile names with spaces
+
+- Vikingfile mode reads a file name that keeps its spaces as they are in the page's JSON (or as
+  ` `): a space where the expected name has one continues the link, handed out as `%20`, where
+  before it ended the link and no name with a space could ever match. A literal `+` reads as a space
+  too, `%2B` stays a plus. A space anywhere else still ends a link. When nothing is found, the error
+  counts the "near misses", links that began with the name and broke off from it.
+
+## Unreleased — PS5 packages by their header
+
+- `Archives.inspect` reports `pkg` for a PS5 package (`\x7F` `FIH`) as it does for a PS4 one
+  (`\x7F` `CNT`), so a download of unknown format is routed to the package installer.
+
+## Unreleased — desktop preview on Linux, with a mouse
+
+- The desktop preview builds and runs on Linux: `sysinfo`, `/proc/self/mounts` and `xdg-open` stand
+  in for the Mach, BSD and Launch Services calls, FFmpeg and `rar-extract` take TLS and SHA-256 from
+  the system OpenSSL, and the JS stack guard is 4 MiB there. macOS keeps SecureTransport and
+  VideoToolbox; the PS5 build is unchanged. Build with `CC=clang CXX=clang++`: GCC rejects a
+  bounds warning in `archive_preflight.cpp`.
+- A mouse drives the preview as a developer's pointer: a left click focuses the smallest navigable
+  element under it and confirms, a right click is `back`, and the wheel is `up`/`down`.
+  `ps5_drive.py click <x> <y>` does the same in the snapshot's logical pixels. The click goes
+  through `globalThis.__ps5ReactHit(nx, ny)`, a hit-test over the focus manager's nodes that takes
+  the point as fractions of the screen; the desktop host maps the window point through the frame's
+  letterbox first.
+- None of this reaches the console. The Linux stand-ins, the mouse handling and the `click` command
+  live in `native/desktop/` and `tools/`, which the PS5 build never compiles; `ffmpeg.ps5()` and the
+  PS5 `rar-extract` link line are untouched. The one shared file is the JS bundle: `__ps5ReactHit` is
+  defined only when the host sets `globalThis.__ps5ReactPointer` before the bundle loads, which the
+  desktop host does and the PS5 host does not, so on the console the hook is never created and
+  nothing calls it. Its source text (about 600 bytes of the 2.4 MB bundle) still ships, as the
+  existing `__ps5ReactInspect` and `__ps5ReactFocus` dev hooks do; stripping it would need a
+  target-aware bundle step, a change to the PS5 build path this entry deliberately avoids.
+  
+
+## Unreleased — far focus scrolls skip ahead
+
+- A focus reveal more than two viewports away (Circle back to the top of a long page) jumps to one
+  viewport short of its target, then eases the rest. Easing the whole way ran at a catch-up speed
+  that rasterized screens of rows per frame and stuttered.
+- A VirtualList re-basing its rows shifts only offsets at or below its top: a view or a scroll target
+  on the content above the list (a jump back to a page's top) keeps its offset instead of being
+  carried back down into the list.
+
+## Unreleased — Buzzheavier's file server
+
+- Anchor mode accepts Buzzheavier's file server, `<server>.buzzheavier.com/d/<id>?v=<signed token>`,
+  which its Download button's `hx-redirect` answer names and which carries no file name (observed
+  2026-10-17; the file's name comes in its Content-Disposition). Its pages stay on the bare domain.
+
+## Unreleased — links up to 2047 bytes
+
+- A captured link may be up to 2047 bytes (was 543, Orbit Store's limit): FileKeeper hands its file
+  out through Datanodes' `tunnel<n>.dlproxy.uk` gateway as `/download/<598-character token>?sig=...`,
+  about 675 bytes, which the scan cut short and so never returned. `rejected` links follow.
+
+## Unreleased — a vault's Vikingfile page, and a PKG's own title id
+
+- Page mode: `prefix: 'https://vikingfile.com/f/'` with the suffix `/` returns the Vikingfile file
+  page, `/f/<10-character id>`, that a LinkVault vault opens. The app reads that page's public
+  metadata and captures the file it names next, so a vault's Vikingfile download is bound to its
+  exact filename and size, as a direct Vikingfile source's is.
+- `Archives.inspect` also returns `title`: for a PKG, the title id its content id names (the
+  header's `UP0001-CUSA01234_00-...` at 0x40), so the app can tell another game's file early.
+
+## Unreleased — only links that appear after the capture starts
+
+- The browser's network process keeps the addresses of files it fetched earlier in memory it never
+  clears, and a capture took one of them, another game's file, the moment it started. A capture now
+  first fingerprints every link already in memory that names no game, before the app opens the page
+  (the task stays `queued` until that pass ends and logs what it found), and only a new such link is
+  taken after it. A link bound to the game, by its title id or Vikingfile's expected filename, is
+  accepted however old. `resume: true` restarts after a refused link with those fingerprints.
+
+## Unreleased — 1fichier and Datanodes routes, and no stop on a host's own page
+
+- Anchor mode accepts the generated routes that carry no file name, adapted from Orbit Store
+  1.3.5's `backend/providers.c`: 1fichier's `a-<n>.1fichier.com/<token>` and Datanodes'
+  `tunnel<n>.dlproxy.uk/<8>/<name>?sig=<signature>` gateway.
+- A host's own page is never taken for its file, even when it names the archive: LinkVault,
+  MediaFire's `www` page, an AkiraBox path outside `/download/`, Vikingfile's `/f/` and the
+  `/<12-character id>` pages of Datanodes, Filekeeper and Datavaults. A LinkVault vault lists
+  those pages, so the capture used to stop on one before the player picked a mirror.
+- `BrowserCapture.capture` takes `rejected`, up to six links the app already probed and refused;
+  the payload scans past them, so a wrong candidate no longer ends the session (Orbit Store 1.3.5
+  keeps six). The deadline may be up to 300 seconds and the read budget is 3 GiB, enough for a
+  LinkVault page's own check and mirror before the host's.
+
 ## Unreleased — one capture for every browser-only provider
 
 - Browser capture also takes the file link from the browser for the hosts whose check only the

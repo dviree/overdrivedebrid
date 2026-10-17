@@ -4,7 +4,7 @@
 
 import '../assets/Inter-Regular.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { focusEnd, useLocale, useT } from '../i18n/index.js';
 import { NO_FILTERS, activeCount, genreLabel, genres, getGame } from '../state/catalog.js';
 import { useIsImmersive, useNavActions, useNavState } from '../state/nav.jsx';
@@ -26,12 +26,20 @@ import { FocusScope, Text, View } from '@ps5-react/core';
   function Header({ children }) {
     const t2 = useT();
     const { rtl } = useLocale();
-    const { section, filters, on, step, keyOf } = useSections();
+    const { section, shown, filters, on, step, keyOf, browseFocus, leaveBrowse } = useSections();
     const wishlist = useWishlist();
     const favorites = wishlist.filter((id) => getGame(id)).length;
     const nav = useNavActions();
     const { top } = useNavState();
     const [browsing, setBrowsing] = (0, useState)(false);
+    const browsingNow = (0, useRef)(false);
+    browsingNow.current = browsing;
+    // A closed menu returns focus a frame later: only then can it tell whether focus left Browse.
+    (0, useEffect)(() => {
+      if (browsing) return void 0;
+      const id = setTimeout(leaveBrowse, 50);
+      return () => clearTimeout(id);
+    }, [browsing]);
     const [choosingLanguage, setChoosingLanguage] = (0, useState)(false);
     const immersive = useIsImmersive();
     const [layouts, track] = useNavLayouts();
@@ -61,7 +69,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
       /* @__PURE__ */ (0, jsx)(DownloadToast, { actionRef: toastAction }),
       choosingLanguage ? /* @__PURE__ */ (0, jsx)(LanguageSheet, { onClose: () => setChoosingLanguage(false) }) : null,
       /* @__PURE__ */ (0, jsx)(View, { style: immersive ? { position: "absolute", left: 0, right: 0, top: 0, zIndex: 40, display: "none" } : { position: "absolute", left: 0, right: 0, top: 0, zIndex: 40 }, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "header", inert: immersive, children: /* @__PURE__ */ (0, jsxs)(View, { onLayout: track("header"), style: { height: 96, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#000000", paddingHorizontal: 48 }, children: [
-        /* @__PURE__ */ (0, jsx)(NavPill, { section, layouts }),
+        /* @__PURE__ */ (0, jsx)(NavPill, { section: shown, layouts }),
         /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 24 }, children: [
           /* @__PURE__ */ (0, jsx)(View, { style: rtl ? { marginRight: -24 } : { marginLeft: -24 }, children: /* @__PURE__ */ (0, jsx)(
             NavItem,
@@ -69,7 +77,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
               focusKey: keyOf("search"),
               icon: "search",
               label: t2("nav.search"),
-              current: section === "search",
+              current: shown === "search",
               onPress: on.search,
               onLayout: track("search"),
               nextFocusDown: down
@@ -82,7 +90,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
               {
                 focusKey: keyOf("discover"),
                 label: t2("nav.discover"),
-                current: section === "discover",
+                current: shown === "discover",
                 onPress: on.discover,
                 onLayout: track("discover"),
                 nextFocusDown: down
@@ -95,10 +103,15 @@ import { FocusScope, Text, View } from '@ps5-react/core';
                   focusKey: keyOf("catalog"),
                   label: t2("nav.browse"),
                   trailing: browsing ? "chevronUp" : "chevronDown",
-                  current: section === "catalog",
+                  current: shown === "catalog",
                   onPress: () => setBrowsing((open) => !open),
                   onLayout: track("catalog"),
-                  nextFocusDown: down
+                  nextFocusDown: down,
+                  onFocus: browseFocus.onFocus,
+                  onBlur: () => {
+                    browseFocus.onBlur();
+                    if (!browsingNow.current) leaveBrowse();
+                  }
                 }
               ),
               /* @__PURE__ */ (0, jsxs)(Menu, { open: browsing, onClose: () => setBrowsing(false), rows: genres.length + 2, children: [
@@ -108,7 +121,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
                     label: t2("nav.allGames"),
                     checked: section === "catalog" && !filters.genre.length,
                     autoFocus: !onlyGenre,
-                    onSelect: () => on.show(NO_FILTERS, "relevance")
+                    onSelect: () => on.show(NO_FILTERS, "newest", void 0, "catalog")
                   }
                 ),
                 /* @__PURE__ */ (0, jsx)(MenuDivider, {}),
@@ -118,7 +131,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
                     {
                       label: genreLabel(genre),
                       checked: onlyGenre === genre,
-                      onSelect: () => on.show({ ...NO_FILTERS, genre: [genre] }, "relevance")
+                      onSelect: () => on.show({ ...NO_FILTERS, genre: [genre] }, "newest")
                     },
                     genre
                   )
@@ -139,7 +152,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
               {
                 focusKey: keyOf("top"),
                 label: t2("nav.top"),
-                current: section === "top",
+                current: shown === "top",
                 onPress: on.top,
                 onLayout: track("top"),
                 nextFocusDown: down
@@ -150,7 +163,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
               {
                 focusKey: keyOf("new"),
                 label: t2("nav.new"),
-                current: section === "new",
+                current: shown === "new",
                 onPress: on.new,
                 onLayout: track("new"),
                 nextFocusDown: down
@@ -164,7 +177,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
                 focusKey: keyOf("favorites"),
                 icon: "heart",
                 label: favorites ? String(favorites) : null,
-                current: section === "favorites",
+                current: shown === "favorites",
                 onPress: on.favorites,
                 onLayout: track("favorites"),
                 nextFocusDown: down,
@@ -176,7 +189,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
               {
                 focusKey: keyOf("downloads"),
                 icon: "download",
-                current: section === "downloads",
+                current: shown === "downloads",
                 onPress: on.downloads,
                 onLayout: track("downloads"),
                 nextFocusDown: down,
@@ -188,7 +201,7 @@ import { FocusScope, Text, View } from '@ps5-react/core';
               {
                 focusKey: keyOf("files"),
                 icon: "folder",
-                current: section === "files",
+                current: shown === "files",
                 onPress: on.files,
                 onLayout: track("files"),
                 nextFocusDown: down

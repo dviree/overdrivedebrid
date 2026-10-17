@@ -10,6 +10,7 @@ import hashlib
 import os
 from pathlib import Path
 import shutil
+import sys
 import tarfile
 
 from common import DEPS, LOCK, ROOT, fetch, run
@@ -76,10 +77,12 @@ def _build(name, arguments, env=None):
 
 
 def desktop():
-    """macOS: TLS through SecureTransport, h264/hevc through VideoToolbox when the decoder asks."""
+    """macOS: TLS through SecureTransport, h264/hevc through VideoToolbox when the decoder asks.
+    Linux: TLS through the system OpenSSL, software decoding only."""
+    platform = (["--enable-securetransport", "--enable-videotoolbox", "--enable-hwaccel=h264_videotoolbox,hevc_videotoolbox"]
+                if sys.platform == "darwin" else ["--enable-openssl"])
     return _build("desktop", ["--cc=clang", "--enable-static", "--disable-shared", "--pkg-config=false",
-                              *COMPONENTS, "--enable-securetransport", "--enable-videotoolbox",
-                              "--enable-hwaccel=h264_videotoolbox,hevc_videotoolbox"])
+                              *COMPONENTS, *platform])
 
 
 def ps5(sdk, network_ports, env):

@@ -74,7 +74,9 @@ import { Text, View } from '@ps5-react/core';
     const onFocus = () => onFocusRow(job2);
     const meta = [(job2.artifact.format || release.format).toUpperCase(), `${release.provider} ${release.version || ""}`.trim(), job2.root].join(" \xB7 ");
     const problem = job2.error && explainError(job2.error, Boolean(release.parts));
-    const note = problem ? problem.action ? t2("downloads.problem", { title: problem.title, action: problem.action }) : problem.title : state === "downloaded" ? job2.message || t2("downloads.installHint") : "";
+    // The files' own title id differs from the game chosen: said before anything else but an error.
+    const mismatch = job2.titleMismatch ? t2("downloads.titleMismatch", { found: job2.titleMismatch, expected: job2.titleId }) : "";
+    const note = problem ? problem.action ? t2("downloads.problem", { title: problem.title, action: problem.action }) : problem.title : mismatch || (state === "downloaded" ? job2.message || t2("downloads.installHint") : "");
     const cdn = isOverdriveCdn(release.provider);
     return /* @__PURE__ */ (0, jsxs)(View, { style: cdn ? { position: "relative", borderRadius: 18, backgroundColor: "#17171a" } : { overflow: "hidden", borderRadius: 18, borderWidth: 2, borderColor: "#2a2a2f", backgroundColor: "#17171a" }, children: [
       cdn ? /* @__PURE__ */ (0, jsx)(CdnAura, { radius: 12, width: 904 }) : null,
@@ -99,7 +101,7 @@ import { Text, View } from '@ps5-react/core';
               detail: shown === "finishing" ? t2("downloads.writingToDisk") : shown === "debrid" ? typeof job2.debridProgress === "number" && job2.debridProgress > 0 ? t2("downloads.debridProgress", { percent: String(Math.round(Math.min(1, job2.debridProgress) * 100)) }) : t2("downloads.debridDetail") : null
             }
           ),
-          note ? /* @__PURE__ */ (0, jsx)(Text, { style: problem ? { width: 870, fontFamily: "Inter-Regular", fontSize: 21, color: "#f2f2f3", numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 30 } : { width: 870, fontFamily: "Inter-Regular", fontSize: 21, color: "#a3a3ab", numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 30 }, children: note }) : null
+          note ? /* @__PURE__ */ (0, jsx)(Text, { style: { width: 870, fontFamily: "Inter-Regular", fontSize: 21, color: problem ? "#f2f2f3" : mismatch ? "#fde68a" : "#a3a3ab", numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 30 }, children: note }) : null
         ] }),
         /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", gap: 12 }, children: [
           /* @__PURE__ */ (0, jsx)(

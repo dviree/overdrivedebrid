@@ -66,7 +66,8 @@ import { FocusScope, ScrollView, Text, View, VirtualList, motion } from '@ps5-re
                 game,
                 width: CARD_WIDTH3,
                 onPress: () => onOpenGame(game),
-                rowEnd: index % COLUMNS3 === COLUMNS3 - 1 || index === results.length - 1
+                rowEnd: index % COLUMNS3 === COLUMNS3 - 1 || index === results.length - 1,
+                rowStart: index % COLUMNS3 === 0
               }
             )
           )

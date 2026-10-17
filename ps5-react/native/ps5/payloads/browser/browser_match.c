@@ -49,9 +49,50 @@ static bool next_url_char(const unsigned char *bytes, size_t length, size_t step
     *out = c;
     return true;
 }
+/* How much of `filename` a Vikingfile link's name part (after "<10-character id>/") spells so far,
+ * %XX escapes decoded and a literal '+' read as the space a form encoding makes of it; -1 once the
+ * name departs from it. */
+static long spelled(const char *filename, const char *name, size_t length, size_t *agreed) {
+    size_t at = 0;
+    if (agreed) *agreed = 0;
+    for (size_t i = 0; i < length; i++, at++) {
+        unsigned char c = (unsigned char)name[i];
+        if (c == '%') {
+            if (length - i < 3 || hex((unsigned char)name[i + 1]) < 0 || hex((unsigned char)name[i + 2]) < 0) return -1;
+            c = (unsigned char)(hex((unsigned char)name[i + 1]) * 16 + hex((unsigned char)name[i + 2]));
+            i += 2;
+        }
+        const unsigned char want = (unsigned char)filename[at];
+        if (!want || (c != want && !(c == '+' && want == ' '))) return -1;
+        if (agreed) *agreed = at + 1;
+    }
+    return (long)at;
+}
+/* The name part of a Vikingfile candidate, after the prefix and "<10-character id>/", if it has one. */
+static const char *name_part(const char *candidate, size_t plen, size_t end, size_t *length) {
+    if (end < plen + 11 || candidate[plen + 10] != '/') return NULL;
+    *length = end - plen - 11;
+    return candidate + plen + 11;
+}
+static uint64_t fingerprint(const char *text) {
+    uint64_t hash = 1469598103934665603ULL; /* FNV-1a */
+    for (; *text; text++) hash = (hash ^ (unsigned char)*text) * 1099511628211ULL;
+    return hash;
+}
+static bool stale(const BrowserMatch *match, uint64_t print) {
+    for (size_t i = 0; i < match->stale_count; i++)
+        if (match->stale[i] == print) return true;
+    return false;
+}
+static bool rejected(const BrowserMatch *match, const char *candidate) {
+    for (size_t i = 0; i < match->rejected_count; i++)
+        if (!strcmp(match->rejected[i], candidate)) return true;
+    return false;
+}
 /* Reads one candidate URL after `prefix` and hands it to the mode's validator. */
 static bool scan_prefix(BrowserMatch *match, const unsigned char *bytes, size_t length,
                         const char *prefix, bool anchor) {
+    /* A page names no file, so it is unbound: an old one from an earlier vault is passed over. */
     const size_t plen = strlen(prefix);
     for (size_t step = 1; step <= 2; step++) {
         for (size_t i = 0; (plen + 1) * step <= length && i <= length - (plen + 1) * step; i++) {
@@ -69,13 +110,42 @@ static bool scan_prefix(BrowserMatch *match, const unsigned char *bytes, size_t 
             for (size_t j = plen; j < sizeof candidate; j++) {
                 unsigned char c;
                 if (!next_url_char(bytes, length, step, &position, &c)) break;
+                /* Vikingfile's JSON can carry a file name with its spaces as they are (or " "),
+                 * not as %20: a space where the expected name has one continues the link, kept as
+                 * %20 so it stays a valid address; anywhere else it still ends it. */
+                const bool viking = !anchor && !match->page && *match->filename;
+                size_t named = 0;
+                const char *name = viking ? name_part(candidate, plen, j, &named) : NULL;
+                if (c == ' ' && name && j + 3 < sizeof candidate) {
+                    const long at = spelled(match->filename, name, named, NULL);
+                    if (at >= 0 && match->filename[at] == ' ') {
+                        memcpy(candidate + j, "%20", 3);
+                        j += 2;
+                        continue;
+                    }
+                }
                 if (boundary(c)) {
                     candidate[j] = 0;
-                    const bool hit = anchor ? browser_capture_anchor_url(match->filename, candidate)
-                                            : browser_capture_url(match->filename, candidate);
+                    /* A link that spelled a good part of the name, then broke off from it. */
+                    size_t agreed = 0;
+                    if (name) (void)spelled(match->filename, name, named, &agreed);
+                    if (agreed >= 8 && !browser_capture_url(match->filename, candidate)) match->near_misses++;
+                    const int hit = anchor ? browser_capture_anchor_url(match->filename, candidate)
+                                           : match->page ? (browser_capture_page_url(candidate) ? BROWSER_CAPTURE_UNBOUND : 0)
+                                           : !browser_capture_url(match->filename, candidate) ? 0
+                                           : *match->filename ? BROWSER_CAPTURE_BOUND : BROWSER_CAPTURE_UNBOUND;
+                    const bool unbound = hit == BROWSER_CAPTURE_UNBOUND;
                     if (hit) {
-                        memcpy(match->url, candidate, j + 1);
-                        return true;
+                        const uint64_t print = unbound ? fingerprint(candidate) : 0;
+                        if (match->baseline) {
+                            if (unbound && match->stale && !stale(match, print)) {
+                                if (match->stale_count < BROWSER_CAPTURE_STALE_MAX) match->stale[match->stale_count++] = print;
+                                else match->stale_full = true;
+                            }
+                        } else if (!(unbound && match->stale && stale(match, print)) && !rejected(match, candidate)) {
+                            memcpy(match->url, candidate, j + 1);
+                            return true;
+                        }
                     }
                     if (c != '\'') break; /* Apostrophe may be inside an unescaped path. */
                 }
@@ -90,7 +160,8 @@ bool browser_match(void *context, const unsigned char *bytes, size_t length) {
     BrowserMatch *match = context;
     if (match->anchor) return match->prefix && scan_prefix(match, bytes, length, match->prefix, true);
     /* Vikingfile's two routes are both scanned: a link page may hand out either one. */
+    const char *const *prefixes = match->page ? browser_capture_page_prefixes : browser_capture_prefixes;
     for (size_t which = 0; which < 2; which++)
-        if (scan_prefix(match, bytes, length, browser_capture_prefixes[which], false)) return true;
+        if (scan_prefix(match, bytes, length, prefixes[which], false)) return true;
     return false;
 }

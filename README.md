@@ -60,9 +60,10 @@
 
 ### Before you start
 
-You need a **jailbroken PS5** running **[ShadowMount+](https://github.com/drakmor/ShadowMountPlus)**,
-the payload that installs `.exfat` images by itself. If ShadowMount+ shows its notification
-when the console starts, you are ready. You also need a **USB drive** and a **PC**.
+You need a **jailbroken PS5** running two payloads: **[ShadowMount+](https://github.com/drakmor/ShadowMountPlus)**,
+which installs `.exfat` images by itself, and **[kstuff](https://github.com/EchoStretch/kstuff-lite/releases)**.
+If ShadowMount+ shows its notification when the console starts, you are ready. You also need a
+**USB drive** and a **PC**.
 
 <p align="center">
   <a href="https://github.com/MyLuxy/overdrive/releases/latest/download/Overdrive.exfat"><img src="https://img.shields.io/badge/Download-Overdrive.exfat-f2f2f3?style=for-the-badge&labelColor=0b0b0d" alt="Download Overdrive.exfat" width="347"></a>
@@ -266,6 +267,52 @@ What a bundler throws away could not come back: most comments, the JSX syntax (i
 </details>
 
 <details>
+<summary><b>Developing</b></summary>
+<br>
+
+Everything runs from the repository root through npm. Once after cloning, `npm run setup`
+(`packaging/setup.sh`) installs every dependency: on Linux the apt packages for the desktop preview,
+the PS5 build and the tests (it asks for `sudo` once), on macOS the Homebrew formulae; then Pillow
+and the framework's npm packages. Read the script first if you'd rather install them yourself.
+
+```sh
+git clone https://github.com/MyLuxy/overdrive.git
+cd overdrive
+npm run setup        # once; asks for sudo on Linux
+npm run dev          # the app in a window on your PC, rebuilt on every save under app/
+```
+
+| Command | What it does |
+| --- | --- |
+| `npm run setup` | Installs every dependency, once after cloning |
+| `npm run dev` | Opens the app in the desktop preview and rebuilds it on every save (state resets on restart) |
+| `npm run preview` | Opens the desktop preview once, without watching |
+| `npm test` | The framework's checks; needed after changes under `ps5-react/`, not for `app/` only |
+| `npm run build` | The PS5 app, then `Overdrive.exfat` and `update.zip` (see Building) |
+| `npm run build:app` | The PS5 app only, in `ps5-react/dist/PPSA99058` |
+
+The preview is the console's UI on your PC, so it takes a controller or the keyboard, and a mouse
+as a developer's shortcut. The first `npm run dev` downloads and compiles the framework's pinned
+dependencies, which takes a while; later starts are quick.
+
+| Action | Keyboard | Mouse | PS5 |
+| --- | --- | --- | --- |
+| Move focus | Arrow keys | Wheel (up/down) | D-pad |
+| Select | Enter or Space | Left click on the element | ✕ |
+| Back | Backspace | Right click | ○ |
+| Sections | Q / E | — | L1 / R1 |
+| Favorite | F | — | □ |
+| Quit the preview | Escape | — | PS button |
+
+The app's code is under `app/` (see "What's in this repository"); a change there needs no rebuild
+of the framework. Keep new user-facing strings in every file of `app/i18n/locales/`. On Linux the
+preview is compiled with clang (`CC=clang CXX=clang++`, set by the npm scripts), since GCC stops on
+a bounds warning in `archive_preflight.cpp`. Linux support for the preview is this fork's addition;
+upstream ps5-react supports macOS only.
+
+</details>
+
+<details>
 <summary><b>Building</b></summary>
 <br>
 
@@ -273,21 +320,19 @@ Builds run on `ubuntu-24.04` with clang 18, only from **Run workflow**: a push b
 Each run puts `Overdrive.exfat` and `update.zip` in a draft release named after
 `app/version.js`, which only maintainers can see.
 
-The same build locally, on any Linux with the packages the workflow installs (`clang-18`,
-`llvm-18`, `cmake`, `ninja-build`, `nodejs`, `npm`, `zlib1g-dev`, `build-essential`,
-`pkg-config`, `unzip`, `curl`, `exfatprogs`, and Pillow from `ps5-react/requirements.txt`):
+The same build locally, from the repository root, after `npm run setup` (see Developing):
 
 ```sh
-cd ps5-react
-python3 tools/build_ps5.py --app-dir ../app --llvm /usr/bin
-sudo ../packaging/make-exfat.sh dist/PPSA99058 ../Overdrive.exfat
+npm run build        # the app, then Overdrive.exfat and update.zip here
+npm run build:app    # the app only, in ps5-react/dist/PPSA99058
 ```
 
-The build downloads its pinned dependencies into `ps5-react/.deps` and writes the app folder, a
-`.zip` and a `.receipt.json` into `ps5-react/dist`. It verifies the result itself
-(`tools/verify.py`), so a green build means the payload structure and signatures check out.
-`--llvm /usr/bin` points it at the system clang; upstream defaults to the Homebrew LLVM path
-because macOS is its supported development environment.
+`packaging/build.sh` behind them finds LLVM 18 where apt or Homebrew put it (set
+`LLVM=<its bin directory>` otherwise), builds through `ps5-react/tools/build_ps5.py`, then runs
+`packaging/make-exfat.sh` under `sudo`, since the image is mounted to be filled. The build
+downloads its pinned dependencies into `ps5-react/.deps` and writes the app folder, a `.zip` and a
+`.receipt.json` into `ps5-react/dist`. It verifies the result itself (`tools/verify.py`), so a
+green build means the payload structure and signatures check out.
 
 The image is a plain exFAT volume whose root is the app folder, with 64 KiB clusters and the
 label `OVERDRIVE`. To release a new version, raise the version in `app/version.js` and

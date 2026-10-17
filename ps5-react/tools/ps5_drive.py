@@ -23,6 +23,8 @@
                                         hidden-layer elements; --json prints the raw records
   ps5_drive.py diff                     what changed on screen since the last snapshot or diff
   ps5_drive.py focus <key|@ref>         move focus by focusKey or by a ref from the last snapshot
+  ps5_drive.py click <x> <y>            a left mouse click at logical pixels: focuses the element
+                                        there and confirms it
   ps5_drive.py shot <path.bmp>          the frame on screen, 960×540
   ps5_drive.py script "<steps>"         input-script steps from now on (docs/ANIMATION.md), e.g.
                                         "swipe:right:0.3" for a touchpad swipe
@@ -175,6 +177,8 @@ def main():
             return diff()
         if args[0] == "focus" and len(args) == 2:
             return print(send(f"focus {resolve(args[1])}"))
+        if args[0] == "click" and len(args) == 3:  # logical px, as snapshot prints them; the host takes render px
+            return print(send(f"click {round(float(args[1]) * SCALE)} {round(float(args[2]) * SCALE)}"))
         print(send(" ".join(args)))
     except OSError as error:
         raise SystemExit(f"No preview on {SOCKET} ({error}); run: ps5_drive.py start --app-dir <dir>")

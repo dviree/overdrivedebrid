@@ -6,6 +6,7 @@ program of its own. UnRAR's license allows its use to extract RAR archives but i
 so it is never linked into the engine; the engine starts this program and reads its reports.
 """
 import subprocess
+import sys
 import tarfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -99,4 +100,5 @@ def build(output, compiler, flags=(), libraries=(), env=None):
 
 def build_host(output):
     """rar-extract for the desktop preview and the archive tests."""
-    return build(output, ["clang++"], ["-pthread"])
+    # macOS hashes with CommonCrypto; elsewhere the driver uses OpenSSL's EVP.
+    return build(output, ["clang++"], ["-pthread"], [] if sys.platform == "darwin" else ["-lcrypto"])

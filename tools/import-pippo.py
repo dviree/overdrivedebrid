@@ -190,6 +190,21 @@ HOSTS = {
 # one, so the mirror, not the host, names the source (the catalog's own
 # link-vault.org records read "Dump - DataNodes" for exactly that reason).
 LINKVAULT = "link-vault.org"
+# Only Pippo's VikingFile links are imported, directly or behind a vault: VikingFile is the one
+# mirror the console's capture names exactly (2026-10-16, the user's call). The rest - AkiraBox,
+# DataNodes, FileKeeper, FileDitch, DataVaults - could not be told to work, so they are left out.
+KEPT_MIRRORS = ("VikingFile",)
+# Links Pippo still lists whose file the host has deleted, checked by hand and taken out of
+# the catalog (2026-10-17): an import must not bring them back.
+DEAD_LINKS = frozenset((
+    "https://vikingfile.com/f/HNrZCSKbfz",
+    "https://vikingfile.com/f/jSw8RclFYf",
+    "https://vikingfile.com/f/GsQZLkn32m",
+    "https://vik1ngfile.site/f/SDlchIQVC5",
+    "https://datanodes.to/rsz11moa0qci",
+    "https://datanodes.to/t0z00hv27z8j",
+    "https://filekeeper.net/xnni4n40qc2x",
+))
 INNER_MIRRORS = {
     "AkiraBox": "AkiraBox",
     "DataNodes": "DataNodes",
@@ -217,11 +232,11 @@ SOURCE = "pippo"
 RAW_BASE = "https://raw.githubusercontent.com/MyLuxy/overdrive/main"
 COVERS_DIRNAME = "covers"
 
-# The counts of the 2026-10-15 import, which --check compares against. "fields"
+# The counts of the 2026-10-15 input, which --check compares against. "fields"
 # counts the link fields of games that name a title id (one game in the input
-# names none, and is skipped); "new" counts the records this tool writes, 22 of
-# them pages the catalog already links under another #fragment.
-EXPECTED = {"fields": 4705, "undecryptable": 1, "present": 3276, "duplicate": 1, "new": 1427, "absent_games": 26}
+# names none, and is skipped); "new" counts the records this tool writes: 1427 of
+# every mirror on 2026-10-15, 132 since only VikingFile is kept (2026-10-16).
+EXPECTED = {"fields": 4705, "undecryptable": 1, "present": 3276, "duplicate": 1, "new": 132, "absent_games": 26}
 # absent_games is reported but not compared: the import itself takes it to 0, which
 # says nothing about the input file. Every other count comes from the input and the
 # other sources alone, so the import leaves them where they were.
@@ -528,6 +543,7 @@ def build_plan(args):
         "undecryptable": [], "unknown_hosts": collections.Counter(), "warnings": [],
         "layers": collections.Counter(), "groups": collections.Counter(), "hosts": collections.Counter(),
         "owners": collections.Counter(), "keys": collections.Counter(), "titles": 0, "editions": 0,
+        "left_out": collections.Counter(),
         "no_title_id": [],
     }
     by_title = collections.defaultdict(list)
@@ -558,6 +574,9 @@ def build_plan(args):
                 info["unknown_hosts"][host] += 1
                 info["warnings"].append("unknown host %r in %s.%s" % (host, title_id, field))
                 continue
+            if url in DEAD_LINKS:
+                info["left_out"]["dead"] += 1
+                continue
             if url in known:
                 info["present"] += 1
                 continue
@@ -571,6 +590,9 @@ def build_plan(args):
             provider, flow, default_owner, key = spec
             fragment = url.split("#", 1)[1] if "#" in url else ""
             inner = INNER_MIRRORS.get(fragment) if host == LINKVAULT else None
+            if (inner or default_owner) not in KEPT_MIRRORS:
+                info["left_out"][inner or default_owner] += 1
+                continue
             info["groups"][group] += 1
             info["hosts"][host] += 1
             info["owners"][inner or default_owner] += 1

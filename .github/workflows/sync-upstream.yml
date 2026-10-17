@@ -100,8 +100,8 @@ jobs:
         run: |
           gh label create upstream-sync --color d93f0b --description "Merging MyLuxy/overdrive needs a hand" 2>/dev/null || true
           title="Upstream merge needs a hand (upstream ${{ steps.fetch.outputs.upstream }})"
-          if gh issue list --label upstream-sync --state open --json title --jq '.[].title' | grep -qF "$title"; then
-            echo "already reported"; exit 0
+          if gh issue list --state open --json title --jq '.[].title' 2>/dev/null | grep -qF "$title"; then
+            echo "already reported"; exit 1
           fi
           {
             echo "Merging \`MyLuxy/overdrive\` main (${{ steps.fetch.outputs.upstream }}) into this fork's main needs a hand. Main was left as it was."
@@ -116,4 +116,10 @@ jobs:
             echo
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           } > /tmp/body.md
-          gh issue create --label upstream-sync --title "$title" --body-file /tmp/body.md
+          cat /tmp/body.md >> "$GITHUB_STEP_SUMMARY"
+          # Issues can be turned off on a fork: then the summary above and this run's red mark (which
+          # GitHub mails to the owner) are the report.
+          gh issue create --label upstream-sync --title "$title" --body-file /tmp/body.md \
+            || gh issue create --title "$title" --body-file /tmp/body.md \
+            || echo "::warning::No issue opened (issues may be off for this repository)."
+          exit 1
