@@ -18,6 +18,7 @@ import { SERVICES, getDebridKey, setDebridKey, useDebridKeys } from '../state/de
 import { URLDialog } from '../downloads/URLDialog.jsx';
 import { TorboxSheet } from './TorboxSheet.jsx';
 import { useState } from 'react';
+import { setDeletePackages, useDeletePackages } from '../state/package-cleanup.js';
 import { Text, View, useIsFocused } from '@ps5-react/core';
 
   var nameOf = (code) => LOCALES.find((locale2) => locale2.code === code).name;
@@ -56,6 +57,28 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
         /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 21, color: colors.muted, lineHeight: 30 }, children: t2("settings.speedLimitDetail") })
       ] }),
       /* @__PURE__ */ (0, jsx)(View, { style: { flexDirection: "row", gap: 9 }, children: LIMITS.map((value) => /* @__PURE__ */ (0, jsx)(SpeedSegment, { limit: value, chosen: value === limit }, value)) })
+    ] });
+  }
+  // Whether a PKG is deleted once installed, laid out like the speed limit: both choices in view.
+  function PackagesSegment({ on, chosen }) {
+    const t2 = useT();
+    return /* @__PURE__ */ (0, jsxs)(View, { focusKey: `settings:packages:${on ? "on" : "off"}`, onPress: () => setDeletePackages(on), style: { position: "relative", flex: 1, height: 60, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: chosen ? colors.fg : colors.surface2 }, children: [
+      /* @__PURE__ */ (0, jsx)(FocusRing, {}),
+      /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 21, fontWeight: 600, color: chosen ? colors.accentFg : colors.muted, numberOfLines: 1 }, children: t2(on ? "settings.on" : "settings.off") })
+    ] });
+  }
+  function DeletePackages() {
+    const t2 = useT();
+    const on = useDeletePackages();
+    return /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 18, paddingHorizontal: 18, paddingTop: 6, paddingBottom: 18 }, children: [
+      /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 3 }, children: [
+        /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }, children: [
+          /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 23, fontWeight: 600, color: colors.fg }, children: t2("settings.deletePackages") }),
+          /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 21, color: colors.fg }, children: t2(on ? "settings.on" : "settings.off") })
+        ] }),
+        /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 21, color: colors.muted, lineHeight: 30 }, children: t2("settings.deletePackagesDetail") })
+      ] }),
+      /* @__PURE__ */ (0, jsx)(View, { style: { flexDirection: "row", gap: 9 }, children: [true, false].map((value) => /* @__PURE__ */ (0, jsx)(PackagesSegment, { on: value, chosen: value === on }, String(value))) })
     ] });
   }
   // The vibration level (issue #32), laid out like the speed limit: every step in view, Cross picks.
@@ -120,6 +143,7 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
       /* @__PURE__ */ (0, jsx)(SectionLabel, { icon: "download", title: t2("settings.downloads") }),
       /* @__PURE__ */ (0, jsx)(SpeedLimit, {}),
       /* @__PURE__ */ (0, jsx)(View, { focusKey: "settings:torbox", onPress: () => setTorbox(true), style: (_state) => [{ position: "relative", flexDirection: "row", alignItems: "center", gap: 24, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 18 }, _state.focused ? { backgroundColor: "#212125" } : null], children: /* @__PURE__ */ (0, jsx)(LanguageFace, { name: t2("settings.torbox"), detail: anyKey ? t2("settings.torboxOn") : t2("settings.torboxOff"), checked: anyKey }) }),
+      /* @__PURE__ */ (0, jsx)(DeletePackages, {}),
       /* @__PURE__ */ (0, jsx)(SectionLabel, { title: t2("settings.controller") }),
       /* @__PURE__ */ (0, jsx)(VibrationLevel, {}),
       /* @__PURE__ */ (0, jsx)(SectionLabel, { icon: "languages", title: t2("language.title"), detail: t2("language.subtitle") }),
