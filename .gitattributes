@@ -1,0 +1,3 @@
+# This fork and MyLuxy/overdrive both add entries at the top of the changelog; a merge keeps both
+# sides' lines instead of stopping on them (sync-upstream.yml).
+ps5-react/CHANGELOG.md merge=union
