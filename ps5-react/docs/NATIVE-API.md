@@ -188,7 +188,7 @@ check a reply against its sender before using an address it names. It needs
 `networking: true` (and on PS5 `filesystemAccess: "console"`), like HTTP. Only IPv4
 limited broadcast is sent; multicast (SSDP, mDNS) and unicast UDP are not available.
 
-## LocalServer (ABI v18)
+## LocalServer (ABI v19)
 
 `LocalServer.listen({port, handler})` serves HTTP/1.1 on `0.0.0.0:port` (1024–65535), so a
 computer's browser can reach the app at `http://<LocalServer.address()>:<port>/`. `handler(request)`

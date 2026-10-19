@@ -2,7 +2,7 @@
 
 ## Unreleased — an HTTP server on the local network
 
-- Add `LocalServer` (native ABI v18, `server.*`): an app listens on a port of the local network and
+- Add `LocalServer` (native ABI v19, `server.*`): an app listens on a port of the local network and
   answers a computer's browser through a JavaScript handler. A native worker reads up to 16
   connections at once with bounded requests; `LocalServer.address()` gives the console's IPv4
   address. Tested on Linux with the shared implementation; not yet on PS5 hardware.

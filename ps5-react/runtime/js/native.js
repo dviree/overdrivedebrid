@@ -580,7 +580,7 @@ function pollServer() {
 }
 
 /**
- * An HTTP server on the local network (ABI v18), so a computer's browser can reach the app at
+ * An HTTP server on the local network (ABI v19), so a computer's browser can reach the app at
  * `http://<address()>:<port>/`. One server at a time; `handler(request)` gets
  * `{method, path, address, contentType, body}` and returns (or resolves to)
  * `{status?, type?, body?}`. A request it leaves unanswered for 15 s gets a 504. Anyone on the
