@@ -14,6 +14,7 @@ import { SearchScreen } from './search/index.jsx';
 import { getGame, warmCovers } from './state/catalog.js';
 import { startRemote } from './state/remote.js';
 import { startAutoDownload } from './state/torbox-queue.js';
+import { refreshHomeArt } from './state/home-art.js';
 import { NavProvider, useIsImmersive, useNavActions, useNavState } from './state/nav.jsx';
 import { StoreFreeze, StoreProvider } from './state/store.jsx';
 import { Header } from './ui/Header.jsx';
@@ -22,6 +23,7 @@ import { Splash } from './ui/Splash.jsx';
 import { UpdateDialog } from './ui/UpdateDialog.jsx';
 import { useInterfaceHaptics } from './ui/haptics.js';
 import { useInterfaceSounds } from './ui/sounds.js';
+import { VERSION } from './version.js';
 
   function Screen({ screen: screen2 }) {
     const { openGame, pop } = useNavActions();
@@ -39,7 +41,10 @@ import { useInterfaceSounds } from './ui/sounds.js';
     useInterfaceSounds();
     useInterfaceHaptics();
     (0, useEffect)(() => {
-      const id = setTimeout(warmCovers, WARM_DELAY_MS);
+      const id = setTimeout(() => {
+        warmCovers();
+        refreshHomeArt();
+      }, WARM_DELAY_MS);
       return () => clearTimeout(id);
     }, []);
     (0, useEffect)(() => {
@@ -81,4 +86,6 @@ import { useInterfaceSounds } from './ui/sounds.js';
       ? /* @__PURE__ */ (0, jsx)(LocaleProvider, { children: /* @__PURE__ */ (0, jsx)(StoreProvider, { children: /* @__PURE__ */ (0, jsx)(NavProvider, { children: /* @__PURE__ */ (0, jsx)(App, {}) }) }) })
       : /* @__PURE__ */ (0, jsx)(Splash, { onDone: () => setBooted(true) }) });
   }
+  // Which build wrote this session of app.log.
+  console.log(`[overdrive] version ${VERSION}`);
   AppRegistry.registerComponent("overdrive", () => () => /* @__PURE__ */ (0, jsx)(Boot, {}));

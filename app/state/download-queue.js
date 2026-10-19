@@ -15,6 +15,8 @@ import { LINK_PREFIX, captureAnchor, linkForLog, otherSourceLink, validateCaptur
 import { readJSON } from './read-json.js';
 import { mountedImages, shadowRequest, within2 } from './shadowmount.js';
 import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
+import { deletesPackages } from './package-cleanup.js';
+import { formatBytes } from './size.js';
 import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetadata, requirePart, validateVikingCapture, vikingLinkPage } from './viking-capture.js';
 
   var ACTIVE = ["resolving", "connecting", "downloading", "verifying", "extracting", "installing", "pausing"];
@@ -29,7 +31,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
   // "Incorrect RAR archive password.", "Incorrect RAR5 archive password."), and a failed attempt leaves
   // no staging behind, so each one costs a moment. They are checked on the console: nothing counts them.
   var KNOWN_PASSWORDS = ["DLPSGAME.COM", "[DLPSGAME.COM]", "www.DLPSGAME.COM", "SuperPSX", "downloadgameps3.com", "hako"];
-  var PASSWORD_FAILURE = /archive password|passphrase/i;
+  var PASSWORD_FAILURE = /archive password|RAR5 password|passphrase/i;
   // A LinkVault page adds its own check and a mirror page before the host's, so a link capture gets
   // the payload's longest window.
   var LINK_CAPTURE_SECONDS = 300;
@@ -71,7 +73,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
   function durable(fs, stateDir2) {
     try {
       fs.mkdir(stateDir2, { recursive: true });
-      fs.exists(`${stateDir2}/downloads.json`);
+      // A folder that exists but takes no files (issue #9: every download failed with "Permission
+      // denied" before it started) leaves the queue in the app data instead.
+      const probe = `${stateDir2}/downloads.probe`;
+      fs.writeFile(probe, "", { sync: false });
+      fs.remove(probe);
       return true;
     } catch (error2) {
       console.log(`[download-queue] ${stateDir2} unavailable, queue kept in the app data: ${error2.message}`);
@@ -89,7 +95,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       delete job2.captureFile;
       delete job2.fallbacks;
       if (job2.state === "installing") return { ...job2, state: "installer-required" };
-      if (job2.state === "extracting") job2.written = job2.total;
+      if (job2.state === "extracting") job2.written = job2.total ?? job2.written;
       if (job2.state === "removing") {
         job2.state = job2.removingFrom ?? "failed";
         job2.error = REMOVAL_CUT;
@@ -218,6 +224,26 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         console.log(`[download-queue] ${job2.id}: a finished ".binary" stays as it is: ${error2.message}`);
       }
     }
+    // An archive's image published before 1.0.7 stayed inside "<homebrew>/<name>-extracted/", where
+    // ShadowMount+ never looks (issue #42): it moves to the homebrew folder itself, once at launch.
+    for (const job2 of jobs) {
+      const folder = job2.publishTo;
+      const image = job2.artifact?.destination;
+      if (job2.state !== "downloaded" || job2.artifact?.nextAction !== "shadowmount" || job2.published || !folder?.endsWith("-extracted") || !image?.startsWith(`${folder}/`)) continue;
+      try {
+        if (!fs.exists(image)) continue;
+        const [target] = publishedImages(job2, [image]);
+        if (fs.exists(target)) throw new Error(`${target} already exists`);
+        storageIdentity(job2);
+        fs.rename(image, target);
+        job2.published = [target];
+        job2.artifact.destination = target;
+        console.log(`[download-queue] ${job2.id}: the image moved out of its extraction folder to ${target}`);
+        change();
+      } catch (error2) {
+        console.log(`[download-queue] ${job2.id}: an extracted image stays where it is: ${error2.message}`);
+      }
+    }
     const find = (id) => {
       const job2 = jobs.find((item) => item.id === id);
       if (!job2) throw new Error("Download is no longer in the queue.");
@@ -245,9 +271,28 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       job2.state = "queued";
       return true;
     }
+    // Deletes the PKGs the console installed, when settings ask it (on by default): the ones it refused
+    // stay to be installed by hand. An archive's extraction folder goes whole once every package in it
+    // is installed, its other files with it. Returns the bytes freed; a file that won't go stays.
+    async function deleteInstalled(job2, paths, installed) {
+      if (!deletesPackages() || !installed.length) return 0;
+      const size = (path) => fs.stat(path)?.size || 0;
+      const freed = installed.reduce((sum, path) => sum + size(path), 0);
+      const folder = job2.packages && installed.length === paths.length && job2.output?.startsWith(`${job2.root}/downloads/extracted/`) ? job2.output : null;
+      try {
+        if (folder) await fs.removeAsync(folder);
+        else for (const path of installed) await Promise.all([path, `${path}.complete`].map((item) => fs.removeAsync(item)));
+        console.log(`[download-queue] ${job2.id}: installed, so ${folder || installed.join(", ")} deleted (${freed} bytes)`);
+        return freed;
+      } catch (error2) {
+        console.log(`[download-queue] ${job2.id}: installed, but the PKG was not deleted: ${error2.message}`);
+        return 0;
+      }
+    }
     async function install(job2) {
       const paths = job2.packages ?? [job2.downloadDestination || job2.artifact.destination];
       const backport = (path) => /backport/i.test(path);
+      const installed = [];
       try {
         for (const path of [...paths.filter((path2) => !backport(path2)), ...paths.filter(backport)]) {
           job2.state = "installing";
@@ -265,6 +310,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           });
           try {
             await task.done;
+            installed.push(path);
           } catch (error2) {
             console.log(`[download-queue] install refused ${path}:`, error2.message);
             if (!backport(path) || paths.every(backport)) throw error2;
@@ -273,7 +319,9 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           }
         }
         job2.state = "installed";
-        job2.message = t("downloads.installed");
+        const freed = await deleteInstalled(job2, paths, installed);
+        if (freed) job2.packagesDeleted = true;
+        job2.message = freed ? t("downloads.installedFreed", { size: formatBytes(freed) }) : t("downloads.installed");
         notifications.show(t("downloads.notice.installed"), job2.title);
       } catch (error2) {
         job2.state = "installer-required";
@@ -346,12 +394,20 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           throw new Error("Not enough space on the selected drive. Free space and retry.");
         fs.mkdir(job2.artifact.directory, { recursive: true });
         active2.transferring = true;
-        task = downloads.enqueue({ ...job2.options, rejectHtml: true, mirrors: void 0, connections: 64, adaptive: true, rangeBytes: 16 * 1024 * 1024, destination: job2.downloadDestination, storageRoot: job2.root, recoverCompleted: true });
+        const rangeBytes = fs.exists(job2.downloadDestination + ".part")
+          ? job2.checkpointRangeBytes || job2.options.rangeBytes || 16 * 1024 * 1024
+          : 4 * 1024 * 1024;
+        if (job2.options.rangeBytes !== rangeBytes || job2.checkpointRangeBytes !== rangeBytes) {
+          job2.options.rangeBytes = job2.checkpointRangeBytes = rangeBytes;
+          change();
+        }
+        task = downloads.enqueue({ ...job2.options, rejectHtml: true, mirrors: void 0, connections: 64, adaptive: true, rangeBytes: job2.options.rangeBytes, destination: job2.downloadDestination, storageRoot: job2.root, recoverCompleted: true });
         active2.task = task;
         unsubscribe = task.subscribe((progress) => {
           if (job2.state === "pausing") return;
           if (ACTIVE.includes(progress.state)) job2.state = progress.state;
-          job2.written = progress.written || 0;
+          const completedBytes = progress.completedBytes ?? progress.written ?? 0;
+          if (completedBytes > 0 || !job2.written) job2.written = completedBytes;
           job2.total = progress.total ?? job2.total;
           job2.received = progress.received || 0;
           job2.connections = progress.connections || 0;
@@ -623,6 +679,10 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       const options = extraction(job2, files);
       const downloaded = { written: job2.written, total: job2.total };
       let estimate = files.reduce((sum, path) => sum + (fs.stat(path)?.size || 0), 0) || null;
+      // The archive's own size stands in for what it unpacks to until the engine reads that from its headers.
+      // Games unpack to far more (issue #54: a 107.9 GB set to over 160 GB): past the guess the row counts
+      // what is written, with no total, instead of holding at 99%.
+      let guessed = true;
       job2.state = "extracting";
       job2.written = 0;
       job2.total = estimate;
@@ -631,6 +691,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       let sample = { at: Date.now(), bytes: 0 };
       const report = (bytes) => {
         const now = Date.now();
+        if (guessed && estimate && bytes > estimate * 0.99) job2.total = estimate = null;
         job2.written = estimate ? Math.min(bytes, estimate * 0.99) : bytes;
         if (now - sample.at >= 1e3) {
           const speed = (bytes - sample.bytes) * 1e3 / (now - sample.at);
@@ -640,7 +701,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         emit2();
       };
       const follow = (progress) => {
-        if (progress.total && progress.total !== estimate) job2.total = estimate = progress.total;
+        // A total at the extraction's cap is the space free, not the files' size: they are bigger.
+        if (progress.total && progress.total !== estimate && progress.total < options.maxBytes) {
+          job2.total = estimate = progress.total;
+          guessed = false;
+        }
         if (progress.phase !== "finishing") {
           report(progress.written || 0);
           return;
@@ -704,18 +769,19 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       }
       const images = (result.artifacts || []).filter((path) => /\.(ffpfsc|ffpfs|ffpkg|exfat)$/i.test(path));
       if (images.length) {
-        const destination = `${job2.root}/homebrew/${folderName(job2.release)}-extracted`;
+        // ShadowMount+ finds an image only directly in the homebrew folder (issue #42: one left in a
+        // "-extracted" folder there was never mounted), so the image file itself is published there,
+        // named as a downloaded image would be; the archive's other files stay where it was extracted.
+        const targets = publishedImages(job2, images);
+        // A target already there while its image is still in the extraction is another file: kept.
+        if (targets.some((target, index) => fs.exists(target) && fs.exists(`${job2.output}/${images[index]}`)))
+          throw new Error("Extracted destination already exists; preserve it and inspect before retrying.");
         fs.mkdir(`${job2.root}/homebrew`, { recursive: true });
-        job2.publishTo = destination;
-        change();
-        if (job2.output !== destination) {
-          if (fs.exists(destination)) throw new Error("Extracted destination already exists; preserve it and inspect before retrying.");
-          storageIdentity(job2);
-          fs.rename(job2.output, destination);
-          job2.output = destination;
-        }
+        storageIdentity(job2);
+        images.forEach((image, index) => fs.exists(`${job2.output}/${image}`) && fs.rename(`${job2.output}/${image}`, targets[index]));
+        job2.published = targets;
         job2.artifact.nextAction = "shadowmount";
-        job2.artifact.destination = `${job2.output}/${images[0]}`;
+        job2.artifact.destination = targets[0];
         job2.state = "downloaded";
         job2.message = t("downloads.extractedReady", { parts: job2.parts ? "all" : "one" });
       } else {
@@ -746,6 +812,10 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           job2.state = "downloaded";
           job2.message = t("downloads.extractedReady", { parts: job2.parts ? "all" : "one" });
           if (beside) job2.message = `${job2.message} ${t("downloads.extractedLeft", { path: extracted })}`;
+        } else {
+          // No PKG and no game folder (a source holding something else): said, not left silent.
+          job2.message = t("downloads.extractedNothing", { path: job2.output });
+          console.log(`[download-queue] ${job2.id}: extracted to ${job2.output}, nothing in it to install`);
         }
       }
       change();
@@ -784,6 +854,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       const size = (index) => sizes[index] ?? largest;
       return Math.max(0, job2.parts.reduce((sum, item, index) => sum + size(index) + (item.completed ? 0 : Math.max(0, size(index) - item.written)), 0) - extracted);
     }
+    // Where an archive's images are published: the homebrew folder itself, under the name a
+    // downloaded image of this release takes (a second image gets "-2", and so on).
+    function publishedImages(job2, images) {
+      return images.map((image, index) => `${job2.root}/homebrew/${folderName(job2.release)}${index ? `-${index + 1}` : ""}.${image.split(".").pop().toLowerCase()}`);
+    }
     function ownedPaths(job2) {
       const managed = (path) => {
         const parts = path.startsWith(`${job2.root}/`) ? path.slice(job2.root.length + 1).split("/") : [];
@@ -795,6 +870,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         job2.downloadDestination,
         job2.output,
         job2.publishTo,
+        ...job2.published || [],
         ...extracted || [],
         job2.release.parts && setDirectory(job2)
       ].filter(Boolean).flatMap((path) => [path, ...[".complete", ".complete.tmp", ".part", ".resume", ".resume.tmp"].map((suffix) => path + suffix)]);
@@ -843,6 +919,13 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           if (!fs.exists(part.destination) && fs.diskUsage(job2.root).free < setNeed(job2, streamed?.written) + MARGIN2)
             throw new Error("Not enough space for the remaining volumes and their extraction. Free space and resume.");
           active2.transferring = true;
+          const rangeBytes = fs.exists(part.destination + ".part")
+            ? part.checkpointRangeBytes || part.options.rangeBytes || 32 * 1024 * 1024
+            : 4 * 1024 * 1024;
+          if (part.options.rangeBytes !== rangeBytes || part.checkpointRangeBytes !== rangeBytes) {
+            part.options.rangeBytes = part.checkpointRangeBytes = rangeBytes;
+            change();
+          }
           const task = downloads.enqueue({
             ...part.options,
             rejectHtml: true,
@@ -856,7 +939,8 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           const off = task.subscribe((progress) => {
             if (job2.state === "pausing") return;
             if (ACTIVE.includes(progress.state)) job2.state = progress.state;
-            part.written = progress.written || 0;
+            const completedBytes = progress.completedBytes ?? progress.written ?? 0;
+            if (completedBytes > 0 || !part.written) part.written = completedBytes;
             part.total = progress.total;
             job2.written = job2.parts.reduce((sum, item) => sum + item.written, 0);
             job2.total = job2.parts.every((item) => item.total != null) ? job2.parts.reduce((sum, item) => sum + item.total, 0) : null;
@@ -1028,7 +1112,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       return shadowRequest(http, route2, body);
     }
     async function registered3(job2) {
-      const paths = [job2.artifact.destination, job2.output, job2.publishTo].filter(Boolean);
+      const paths = [job2.artifact.destination, job2.output, job2.publishTo, ...job2.published || []].filter(Boolean);
       const info = (title) => shadowRequest2("games/info", { title_id: title }).catch((error2) => {
         if (/HTTP 404/.test(error2.message)) return null;
         throw error2;
@@ -1241,6 +1325,28 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       change();
       pump(job2);
     }
+    // A multi-volume archive's last volume is smaller than the others. When a Vikingfile set's last
+    // listed volume is as big as its first, the archive goes on past it and can never be extracted
+    // (issue #42: 100 GB downloaded for nothing): checked from both pages' public sizes before the
+    // first volume downloads. A page that can't be read lets the download go on, as before.
+    const SIZE_UNITS = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4, KIB: 1024, MIB: 1024 ** 2, GIB: 1024 ** 3, TIB: 1024 ** 4 };
+    const pageBytes = (metadata) => metadata?.displaySize ? metadata.displaySize.value * (SIZE_UNITS[metadata.displaySize.unit] ?? 0) : 0;
+    async function lastVolumeIsFull(job2, first, signal) {
+      if (!job2.parts || job2.parts.length < 2 || job2.partIndex !== 0) return false;
+      const lastPart = job2.release.parts?.at(-1);
+      const last = lastPart?.sources?.[job2.parts.at(-1)?.sourceIndex || 0];
+      if (!last || vikingLinkPage(last) || !/vik[i1]ngfile\.(?:com|site)\/f\//.test(last.browserUrl || last.url || "")) return false;
+      try {
+        const lastMetadata = await describeVikingCapture(http, last, signal);
+        const [firstBytes, lastBytes] = [pageBytes(first), pageBytes(lastMetadata)];
+        // The pages round sizes ("9.90 GB"): only a last volume shown at least as big as the first
+        // counts as full, as all 30 cut sets found on 2026-10-18 were.
+        return firstBytes > 0 && lastBytes >= firstBytes;
+      } catch (error2) {
+        console.log("[browser-capture] the last volume's page could not be read:", error2.message);
+        return false;
+      }
+    }
     async function captureBrowser(job2, source2, session) {
       const current = () => captures.get(job2.id) === session && jobs.includes(job2) && job2.state === "awaiting-browser";
       let handingOff = false;
@@ -1257,6 +1363,17 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           console.log("[browser-capture] reading public file metadata");
           metadata = await describeVikingCapture(http, source2, session.cancel.signal);
           if (!current()) return;
+          if (await lastVolumeIsFull(job2, metadata, session.cancel.signal)) {
+            if (!current()) return;
+            console.log("[browser-capture] the set's last volume is as big as the first: the archive goes on past it");
+            captures.delete(job2.id);
+            job2.state = "failed";
+            job2.error = "Incomplete RAR archive or missing volume.";
+            delete job2.captureState;
+            change();
+            pump();
+            return;
+          }
           session.task = browserCapture.capture({ prefix: VIKING_PREFIX, suffix: `/${metadata.filename}`, timeoutSeconds: 180 });
         }
         await armedCapture(session.task);
@@ -1525,10 +1642,12 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         if (job2.parts?.[job2.partIndex] && !job2.parts[job2.partIndex].completed) {
           job2.parts[job2.partIndex].written = 0;
           delete job2.parts[job2.partIndex].options;
+          delete job2.parts[job2.partIndex].checkpointRangeBytes;
         }
         job2.written = job2.parts ? job2.parts.reduce((sum, part) => sum + part.written, 0) : 0;
         job2.bytesPerSecond = 0;
         delete job2.options;
+        delete job2.checkpointRangeBytes;
         delete job2.inspected;
         job2.state = "queued";
         job2.error = "";
@@ -1611,6 +1730,21 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       },
       /** Marks finished images (all, or job `id`'s) ShadowMount has installed since as installed; false when none or it can't be asked. */
       syncInstalls,
+      /** A package the Files screen installed by itself: the download it came from no longer offers "Install
+       * PKG" (testers, 2026-10-18). Only a download still waiting for its install moves. */
+      packageInstalled(path) {
+        let found = false;
+        for (const job2 of jobs) {
+          const paths = [job2.artifact?.destination, job2.downloadDestination, job2.output, ...job2.packages ?? []];
+          if (job2.state !== "installer-required" || !paths.includes(path)) continue;
+          job2.state = "installed";
+          job2.message = t("downloads.installed");
+          job2.error = "";
+          found = true;
+        }
+        if (found) change();
+        return found;
+      },
       /** Frees the engine's one archive task, for the updater: a set extracting while it downloads extracts after its download instead. */
       async yieldArchives() {
         const streamed = active2?.streamed;

@@ -27,6 +27,17 @@ import { vikingLinkPage } from './viking-capture.js';
       return false;
     }
   }
+  // Off for good, not a test: MediaFire removed most of the catalog's files in October 2026 (22 of 25 PS4
+  // links checked answered 404, whole PS5 sets went with them) and answers a busy address with HTTP 429.
+  // Its sources leave every game as a paused host's do, and a game with no other host leaves the catalog.
+  var DISABLED_FILTERS = /* @__PURE__ */ new Set(["mediafire"]);
+  function disabled(release) {
+    try {
+      return /(?:^|\.)mediafire\.com$/i.test(webURL(release.browserUrl || release.url).host);
+    } catch {
+      return /^mediafire$/i.test(release.provider || "");
+    }
+  }
   // The catalog's own host keys (game.providers) whose every source needs the browser.
   var PAUSED_FILTERS = /* @__PURE__ */ new Set([
     "1fichier", "datavaults", "buzzheavier", "gofile", "rapidgator", "filecrypt",
@@ -34,6 +45,7 @@ import { vikingLinkPage } from './viking-capture.js';
     "1024terabox"
   ]);
   function pausedSource(release) {
+    if (disabled(release)) return true;
     if (!PAUSE_BROWSER_HOSTS) return false;
     let kind;
     try {
@@ -44,6 +56,6 @@ import { vikingLinkPage } from './viking-capture.js';
     if (kind === "vikingfile" || vikingLinkPage(release) || /archive\.org$/i.test(release.provider || "") || testing(release)) return false;
     return kind === "browser" || kind === "datanodes" || kind === "buzzheavier";
   }
-  var pausedFilter = (host) => PAUSE_BROWSER_HOSTS && PAUSED_FILTERS.has(host);
+  var pausedFilter = (host) => DISABLED_FILTERS.has(host) || PAUSE_BROWSER_HOSTS && PAUSED_FILTERS.has(host);
 
 export { pausedFilter, pausedSource };

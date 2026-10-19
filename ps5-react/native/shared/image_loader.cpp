@@ -774,8 +774,15 @@ private:
       return;
     }
     for (Transfer& t : transfers_) if (busy(t) && t.url == entry->url) { t.entries.push_back(std::move(entry)); return; }
-    ++counters.fetches;
     Transfer* t = begin(entry->url, false);
+    // Counted as cached when picked, it found its bytes gone (stale, evicted) and every connection busy
+    // (issue #56): it waits for the next round, where it counts as a network load.
+    if (!t) {
+      std::lock_guard lock(mutex_);
+      fetches_.push_back(std::move(entry));
+      return;
+    }
+    ++counters.fetches;
     t->entries.push_back(std::move(entry));
     if (!send(*t)) {
       for (const EntryPtr& e : t->entries) fail(e, "could not configure the HTTP transport");
@@ -790,6 +797,7 @@ private:
   Transfer* begin(const std::string& url, bool warm) {
     Transfer* t = nullptr;
     for (Transfer& candidate : transfers_) if (!busy(candidate)) { t = &candidate; break; }
+    if (!t) return nullptr;
     t->url = url; t->body.clear(); t->overflow = t->out_of_memory = false; t->warm = warm;
     return t;
   }
@@ -807,6 +815,11 @@ private:
       if (cached(url) || disk_.has(url) || std::any_of(transfers_.begin(), transfers_.end(),
           [&](const Transfer& t) { return busy(t) && t.url == url; })) continue;
       Transfer* t = begin(url, true);
+      if (!t) {
+        std::lock_guard lock(mutex_);
+        warms_.push_front(std::move(url));
+        return;
+      }
       if (!send(*t)) { t->warm = false; return; }
       ++active; ++warming;
       return;

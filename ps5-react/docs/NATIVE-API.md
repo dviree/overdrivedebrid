@@ -103,6 +103,7 @@ inside it can be read by path. Paths containing `..` components are rejected.
 | `removeTree(path)` | — | A file, or a directory and everything in it; symbolic links are unlinked, never followed. Synchronous: for small app-owned trees |
 | `removeAsync(path)` | `Promise<void>` | What `removeTree` removes, on a worker thread, one path at a time in the order asked. Resolves once the path is gone, or if it never existed; rejects with an `Error` naming the path and the system error. For large files and trees, whose removal holds the screen for seconds |
 | `rename(from, to)` | — | Both are app paths |
+| `copyFile(from, to)` | — | Copies the bytes (`readFile` and `writeFile` carry text only); written beside `to`, then renamed over it, mode `0644` |
 | `chmod(path, mode)` | — | Permission bits, such as `0o777`; a file or directory the console's own services must read (a title's files) needs them open to every user |
 | `mounts()` | `{device, path, type}[]` | Up to 64 mounted filesystems visible to this process, as host paths; see [Hardware status](#hardware-status) |
 | `diskUsage(path)` | `{total, free}` | Bytes for the filesystem holding `path`; `free` is available to the app, clamped to `0..total` |
@@ -147,6 +148,9 @@ headers include `etag` and `last-modified` for stable file identity checks.
 `Downloads.enqueue({url, destination, ...options})` returns a cancellable task
 with progress subscriptions and a completion promise. Binary downloads stay
 native, use parallel validated ranges when eligible, and resume durable ranges.
+Progress snapshots expose `written` for live disk throughput and `completedBytes`
+for whole completed ranges. `completedBytes` excludes incomplete in-flight ranges,
+so use it for resumable progress displays.
 `Downloads.enqueueManifest({manifest, destination, ...options})` supports split
 byte manifests with per-piece SHA-1 and whole-file SHA-256 verification.
 `DownloadFormats` validates manifests and routes image, package, archive and
@@ -184,7 +188,7 @@ check a reply against its sender before using an address it names. It needs
 `networking: true` (and on PS5 `filesystemAccess: "console"`), like HTTP. Only IPv4
 limited broadcast is sent; multicast (SSDP, mDNS) and unicast UDP are not available.
 
-## LocalServer (ABI v18)
+## LocalServer (ABI v19)
 
 `LocalServer.listen({port, handler})` serves HTTP/1.1 on `0.0.0.0:port` (1024–65535), so a
 computer's browser can reach the app at `http://<LocalServer.address()>:<port>/`. `handler(request)`

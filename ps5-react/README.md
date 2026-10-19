@@ -169,10 +169,11 @@ The bundler resolves React and `@ps5-react/core` from this checkout; an external
 app does not need its own `node_modules`. Its directory name must not collide
 with a folder in `apps/`. See [external-app editor setup](docs/EXTERNAL-APPS.md).
 
-PNG files in the app's `sce_sys/` go into the title's `sce_sys/`: `icon0.png`
-(512×512) is the home-screen icon, `pic0.png` (1920×1080) its background and
-`pic1.png` (1920×1080) the splash shown until the first frame. Without an
-`icon0.png` the build draws a placeholder icon.
+PNG and DDS files in the app's `sce_sys/` go into the title's `sce_sys/`:
+`icon0.png` (512×512) is the home-screen icon, `pic0.dds` the background while
+the app is selected and `pic1.dds` the one while it launches, both 3840×2160
+BC7 DX10 DDS (`DXGI_FORMAT_BC7_UNORM`, one surface, no mipmaps). The home screen
+ignores a `pic0.png`. Without an `icon0.png` the build draws a placeholder icon.
 
 ### Application configuration
 
