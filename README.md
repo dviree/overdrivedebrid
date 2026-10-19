@@ -160,9 +160,10 @@ Only paired browsers can use it; **Settings → Debrid → Forget paired browser
 
 > [!NOTE]
 > This fork merges [MyLuxy/overdrive](https://github.com/MyLuxy/overdrive) by itself every six hours
-> (`.github/workflows/sync-upstream.yml`), checks the result and builds it. Its updates come from this
-> repository's releases, numbered `<upstream version>.<build>` (for example `1.0.5.7`), so a console
-> gets upstream's changes together with TorBox and Premiumize.
+> (`.github/workflows/sync-upstream.yml`), checks the result, builds it and publishes it as the
+> latest release. Its updates come from this repository's releases, numbered `<upstream
+> version>.<build>` (for example `1.0.7.7`), so a console gets upstream's changes together with
+> TorBox and Premiumize the next time Overdrive opens.
 
 You only install Overdrive by hand once. When a new version comes out, the app tells you by
 itself a few seconds after it opens:
