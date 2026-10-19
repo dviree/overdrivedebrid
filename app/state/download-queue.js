@@ -31,7 +31,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
   // "Incorrect RAR archive password.", "Incorrect RAR5 archive password."), and a failed attempt leaves
   // no staging behind, so each one costs a moment. They are checked on the console: nothing counts them.
   var KNOWN_PASSWORDS = ["DLPSGAME.COM", "[DLPSGAME.COM]", "www.DLPSGAME.COM", "SuperPSX", "downloadgameps3.com", "hako"];
-  var PASSWORD_FAILURE = /archive password|passphrase/i;
+  var PASSWORD_FAILURE = /archive password|RAR5 password|passphrase/i;
   // A LinkVault page adds its own check and a mirror page before the host's, so a link capture gets
   // the payload's longest window.
   var LINK_CAPTURE_SECONDS = 300;
@@ -73,7 +73,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
   function durable(fs, stateDir2) {
     try {
       fs.mkdir(stateDir2, { recursive: true });
-      fs.exists(`${stateDir2}/downloads.json`);
+      // A folder that exists but takes no files (issue #9: every download failed with "Permission
+      // denied" before it started) leaves the queue in the app data instead.
+      const probe = `${stateDir2}/downloads.probe`;
+      fs.writeFile(probe, "", { sync: false });
+      fs.remove(probe);
       return true;
     } catch (error2) {
       console.log(`[download-queue] ${stateDir2} unavailable, queue kept in the app data: ${error2.message}`);
@@ -91,7 +95,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       delete job2.captureFile;
       delete job2.fallbacks;
       if (job2.state === "installing") return { ...job2, state: "installer-required" };
-      if (job2.state === "extracting") job2.written = job2.total;
+      if (job2.state === "extracting") job2.written = job2.total ?? job2.written;
       if (job2.state === "removing") {
         job2.state = job2.removingFrom ?? "failed";
         job2.error = REMOVAL_CUT;
@@ -675,6 +679,10 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       const options = extraction(job2, files);
       const downloaded = { written: job2.written, total: job2.total };
       let estimate = files.reduce((sum, path) => sum + (fs.stat(path)?.size || 0), 0) || null;
+      // The archive's own size stands in for what it unpacks to until the engine reads that from its headers.
+      // Games unpack to far more (issue #54: a 107.9 GB set to over 160 GB): past the guess the row counts
+      // what is written, with no total, instead of holding at 99%.
+      let guessed = true;
       job2.state = "extracting";
       job2.written = 0;
       job2.total = estimate;
@@ -683,6 +691,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       let sample = { at: Date.now(), bytes: 0 };
       const report = (bytes) => {
         const now = Date.now();
+        if (guessed && estimate && bytes > estimate * 0.99) job2.total = estimate = null;
         job2.written = estimate ? Math.min(bytes, estimate * 0.99) : bytes;
         if (now - sample.at >= 1e3) {
           const speed = (bytes - sample.bytes) * 1e3 / (now - sample.at);
@@ -692,7 +701,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         emit2();
       };
       const follow = (progress) => {
-        if (progress.total && progress.total !== estimate) job2.total = estimate = progress.total;
+        // A total at the extraction's cap is the space free, not the files' size: they are bigger.
+        if (progress.total && progress.total !== estimate && progress.total < options.maxBytes) {
+          job2.total = estimate = progress.total;
+          guessed = false;
+        }
         if (progress.phase !== "finishing") {
           report(progress.written || 0);
           return;
@@ -799,6 +812,10 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           job2.state = "downloaded";
           job2.message = t("downloads.extractedReady", { parts: job2.parts ? "all" : "one" });
           if (beside) job2.message = `${job2.message} ${t("downloads.extractedLeft", { path: extracted })}`;
+        } else {
+          // No PKG and no game folder (a source holding something else): said, not left silent.
+          job2.message = t("downloads.extractedNothing", { path: job2.output });
+          console.log(`[download-queue] ${job2.id}: extracted to ${job2.output}, nothing in it to install`);
         }
       }
       change();

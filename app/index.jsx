@@ -14,6 +14,7 @@ import { SearchScreen } from './search/index.jsx';
 import { getGame, warmCovers } from './state/catalog.js';
 import { startRemote } from './state/remote.js';
 import { startAutoDownload } from './state/torbox-queue.js';
+import { refreshHomeArt } from './state/home-art.js';
 import { NavProvider, useIsImmersive, useNavActions, useNavState } from './state/nav.jsx';
 import { StoreFreeze, StoreProvider } from './state/store.jsx';
 import { Header } from './ui/Header.jsx';
@@ -40,7 +41,10 @@ import { VERSION } from './version.js';
     useInterfaceSounds();
     useInterfaceHaptics();
     (0, useEffect)(() => {
-      const id = setTimeout(warmCovers, WARM_DELAY_MS);
+      const id = setTimeout(() => {
+        warmCovers();
+        refreshHomeArt();
+      }, WARM_DELAY_MS);
       return () => clearTimeout(id);
     }, []);
     (0, useEffect)(() => {

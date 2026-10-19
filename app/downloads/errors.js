@@ -11,13 +11,18 @@ import { t } from '../i18n/core.js';
   var CASES = [
     // Before STALE_PARTIAL: a full disk fails "write partial file".
     [/no space left|ENOSPC/i, "noSpace", "freeThenResume"],
+    // An extraction is capped at the space free when it starts: its files outgrew it.
+    [/extraction size limit/i, "noSpaceExtract", "freeThenRetryExtract"],
     [/partial files were deleted/i, "partialDeleted", "restart"],
     [STALE_PARTIAL, "staleProgress", "restart"],
     [/file changed since this partial/i, "fileChanged", "restart"],
     [/needs more memory to extract/i, "archiveTooLarge", "otherSource"],
     // The engine's heap had no room for the extraction; a fresh launch frees it.
     [/not enough memory to extract/i, "noMemory", "reopenApp"],
-    [/archive password/i, "archivePassword", "otherSource"],
+    // Every known password was tried before this shows (download-queue.js), and the downloaded files stay:
+    // cancelling would delete them (issue #54).
+    [/password is missing|passphrase required/i, "archivePasswordMissing", "passwordKeepFiles"],
+    [/archive password|RAR5 password|passphrase/i, "archivePasswordUnknown", "passwordKeepFiles"],
     [/not a game file/i, "notGameFile", "otherSource"],
     [/fake PKGs install only/i, "pkgFirmware", "otherSource"],
     // The package installer is sent to the payload loader (etaHEN, an elfldr): without one the PKG is

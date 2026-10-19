@@ -6,6 +6,23 @@
   answers a computer's browser through a JavaScript handler. A native worker reads up to 16
   connections at once with bounded requests; `LocalServer.address()` gives the console's IPv4
   address. Tested on Linux with the shared implementation; not yet on PS5 hardware.
+## Unreleased — home-screen backgrounds
+
+- The build copies `.dds` files from an app's `sce_sys/` as well as `.png`: the home screen shows
+  `pic0.dds` while the app is selected and `pic1.dds` while it launches (3840x2160, BC7 DX10 DDS) and
+  ignores a `pic0.png`, which the README said was the background. The README now names the DDS files.
+- `fs.copyFile(from, to)` (ABI v18) copies a file's bytes, written beside `to` and renamed over it;
+  `readFile` and `writeFile` carry text only.
+
+## Unreleased — extraction receipts of any size
+
+- An extraction's receipt (one checksum line per file) is written to disk as it grows, through a 1 MiB
+  buffer, instead of kept whole in memory, and a later run reads it back a line at a time. A game packed
+  as a folder (issue #52: ASTRO BOT, Resident Evil Requiem) holds more files than the 16 MiB a receipt
+  could take, and failed with "Extraction receipt exceeds the metadata limit." Memory now stays the same
+  whatever the number of files; an archive may hold up to 1,000,000 entries (was 100,000). The receipt
+  file keeps its format, so extractions made before still recover.
+
 ## Unreleased — PS5 packages install
 
 - The package installer payload takes a PS5 package (`\x7F` `FIH`) as well as a PS4 one

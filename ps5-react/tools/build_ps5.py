@@ -277,8 +277,9 @@ def main():
     param.update(titleId=TITLE, conceptId=TITLE[4:], contentId=config["contentId"], contentVersion=config["version"])
     param["localizedParameters"]["en-US"]["titleName"] = config["name"]
     (app / "sce_sys/param.json").write_text(json.dumps(param, indent=2) + "\n")
-    # An app's own home-screen art (icon0.png 512x512, pic0.png 1920x1080) replaces the proof icon.
-    art = sorted((app_dir / "sce_sys").glob("*.png"))
+    # An app's own home-screen art replaces the proof icon: icon0.png 512x512, and the backgrounds the home
+    # screen shows, pic0.dds (app selected) and pic1.dds (launching), 3840x2160 BC7 DX10 DDS.
+    art = sorted([*(app_dir / "sce_sys").glob("*.png"), *(app_dir / "sce_sys").glob("*.dds")])
     for path in art:
         shutil.copy2(path, app / "sce_sys" / path.name)
     if not any(path.name == "icon0.png" for path in art):

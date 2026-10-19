@@ -78,10 +78,12 @@ import { formatBytes } from '../state/size.js';
   var GROUP_RANK = { direct: 0, page: 1, browser: 2, unavailable: 3 };
   var HEALTH_RANK = { ok: 0, flaky: 2 };
   var isBackport = ({ label }) => /\bback\s*port\b/i.test(label || "");
-  // After MediaFire, the browser hosts confirmed on the console (Vikingfile, DataNodes, FileKeeper)
-  // before the ones still being tried (AkiraBox, a vault's other mirrors).
+  // After the direct hosts, the browser hosts confirmed on the console (Vikingfile, DataNodes, FileKeeper),
+  // then MediaFire: its files are often removed (most of the PS4 ones taken from DLPSGAME in October 2026)
+  // and it answers a busy address with HTTP 429. Then the hosts still being tried (AkiraBox, a vault's
+  // other mirrors).
   var CONFIRMED = /^(?:vik[i1]ngfile|datanodes|filekeeper(?:\.net)?)$/i;
-  var hostRank = ({ provider }) => isOverdriveCdn(provider) ? 0 : provider.toLowerCase() === "archive.org" ? 1 : provider.toLowerCase() === "mediafire" ? 2 : CONFIRMED.test(provider) ? 3 : 4;
+  var hostRank = ({ provider }) => isOverdriveCdn(provider) ? 0 : provider.toLowerCase() === "archive.org" ? 1 : CONFIRMED.test(provider) ? 2 : provider.toLowerCase() === "mediafire" ? 3 : 4;
   var ranked = (release, index) => ({ release, index, rank: [
     isDlc(release) ? 1 : 0,
     release.unavailableReason ? 1 : 0,

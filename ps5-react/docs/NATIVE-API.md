@@ -103,6 +103,7 @@ inside it can be read by path. Paths containing `..` components are rejected.
 | `removeTree(path)` | — | A file, or a directory and everything in it; symbolic links are unlinked, never followed. Synchronous: for small app-owned trees |
 | `removeAsync(path)` | `Promise<void>` | What `removeTree` removes, on a worker thread, one path at a time in the order asked. Resolves once the path is gone, or if it never existed; rejects with an `Error` naming the path and the system error. For large files and trees, whose removal holds the screen for seconds |
 | `rename(from, to)` | — | Both are app paths |
+| `copyFile(from, to)` | — | Copies the bytes (`readFile` and `writeFile` carry text only); written beside `to`, then renamed over it, mode `0644` |
 | `chmod(path, mode)` | — | Permission bits, such as `0o777`; a file or directory the console's own services must read (a title's files) needs them open to every user |
 | `mounts()` | `{device, path, type}[]` | Up to 64 mounted filesystems visible to this process, as host paths; see [Hardware status](#hardware-status) |
 | `diskUsage(path)` | `{total, free}` | Bytes for the filesystem holding `path`; `free` is available to the app, clamped to `0..total` |

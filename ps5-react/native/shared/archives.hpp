@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 namespace archives {
-inline constexpr std::uint64_t max_entries = 100000;
+inline constexpr std::uint64_t max_entries = 1000000;
 inline constexpr std::size_t max_metadata_bytes = 16 * 1024 * 1024;
 // `stream`: a RAR set whose later volumes are still downloading. Only the first exists yet; each next one is
 // read once its final name appears.

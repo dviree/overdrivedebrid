@@ -25,6 +25,7 @@
 //                                  the order asked; a path already gone counts as removed
 //   removals.poll()                [{id, state, error}]; error is the system error; consumes terminal
 //   fs.rename(from, to)
+//   fs.copyFile(from, to)          ABI v18; copies bytes, written beside `to` and renamed into place
 //   fs.chmod(path, mode)           sets permission bits
 //   fs.mounts()                    [{device, path, type}], visible to the process
 //                                  console access is opt-in via app.json

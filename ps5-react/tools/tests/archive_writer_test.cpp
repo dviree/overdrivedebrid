@@ -40,11 +40,22 @@ std::vector<unsigned char> slurp(const std::string& path) {
   return out;
 }
 
+// Commits `receipt` to a file and returns its lines after the header, the file then removed.
+std::string committed(archives::Receipt& receipt, const std::string& dir) {
+  assert(receipt.commit("receipt-out"));
+  const auto bytes = slurp(dir + "/receipt-out");
+  unlink((dir + "/receipt-out").c_str());
+  const std::string text(bytes.begin(), bytes.end());
+  assert(text.rfind("P5AR001:test\n", 0) == 0);
+  return text.substr(text.find('\n') + 1);
+}
+
 void round_trip(const std::string& dir, std::mt19937& rng, std::size_t ring) {
   std::atomic<bool> cancelled{false};
   archives::Timings timings;
   archives::Writer writer(cancelled, timings);
-  assert(writer.start(ring));
+  archives::Receipt receipt(dir, "P5AR001:test");
+  assert(writer.start(ring, receipt));
   const int files = 1 + rng() % 200;
   std::vector<std::vector<unsigned char>> contents;
   std::string expected;
@@ -68,15 +79,14 @@ void round_trip(const std::string& dir, std::mt19937& rng, std::size_t ring) {
     expected += sha(data) + "|" + name + "\n";
     contents.push_back(std::move(data));
   }
-  std::string receipt;
   std::atomic<std::size_t> reports{0}, last_total{0}, most{0};
-  const auto error = writer.finish(receipt, [&](std::size_t synced, std::size_t total) {
+  const auto error = writer.finish([&](std::size_t synced, std::size_t total) {
     ++reports;
     last_total = total;
     for (auto seen = most.load(); synced > seen && !most.compare_exchange_weak(seen, synced);) {}
   });
   if (!error.empty()) std::fprintf(stderr, "error: %s\n", error.c_str());
-  assert(error.empty() && receipt == expected);
+  assert(error.empty() && committed(receipt, dir) == expected);
   // One report before the fsyncs and one after each.
   assert(reports == std::size_t(files) + 1 && last_total == std::size_t(files) && most == std::size_t(files));
   for (int i = 0; i < files; ++i) {
@@ -89,15 +99,15 @@ void write_error(const std::string& dir) {
   std::atomic<bool> cancelled{false};
   archives::Timings timings;
   archives::Writer writer(cancelled, timings);
-  assert(writer.start(1 << 20));
+  archives::Receipt receipt(dir, "P5AR001:test");
+  assert(writer.start(1 << 20, receipt));
   const int fd = open((dir + "/ro").c_str(), O_RDONLY | O_CREAT, 0600);
   assert(writer.begin(fd, dir + "/ro", "ro"));
   std::vector<unsigned char> data(8 << 20, 7);
   bool accepted = true;
   for (int i = 0; i < 64 && accepted; ++i) accepted = writer.append(data.data(), data.size(), std::size_t(i) * data.size());
-  std::string receipt;
-  const auto error = accepted && writer.end() ? writer.finish(receipt) : writer.error();
-  assert(!error.empty() && receipt.empty());
+  const auto error = accepted && writer.end() ? writer.finish() : writer.error();
+  assert(!error.empty() && receipt.lines() == 0);
   unlink((dir + "/ro").c_str());
 }
 
@@ -106,15 +116,15 @@ void scattered(const std::string& dir) {
   std::atomic<bool> cancelled{false};
   archives::Timings timings;
   archives::Writer writer(cancelled, timings);
-  assert(writer.start(1 << 20));
+  archives::Receipt receipt(dir, "P5AR001:test");
+  assert(writer.start(1 << 20, receipt));
   std::vector<unsigned char> data(20000);
   for (std::size_t i = 0; i < data.size(); ++i) data[i] = static_cast<unsigned char>(i * 7);
   const int fd = open((dir + "/s").c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   assert(fd >= 0 && writer.begin(fd, dir + "/s", "s"));
   for (std::size_t i = data.size(); i-- > 0;) assert(writer.append(&data[i], 1, i));
   assert(writer.end());
-  std::string receipt;
-  assert(writer.finish(receipt).empty() && receipt == sha(data) + "|s\n" && slurp(dir + "/s") == data);
+  assert(writer.finish().empty() && committed(receipt, dir) == sha(data) + "|s\n" && slurp(dir + "/s") == data);
   unlink((dir + "/s").c_str());
 }
 
@@ -123,15 +133,15 @@ void sync_missing(const std::string& dir) {
   std::atomic<bool> cancelled{false};
   archives::Timings timings;
   archives::Writer writer(cancelled, timings);
-  assert(writer.start(1 << 20));
+  archives::Receipt receipt(dir, "P5AR001:test");
+  assert(writer.start(1 << 20, receipt));
   std::vector<unsigned char> data(4096, 3);
   for (const char* name : {"m0", "m1", "m2"}) {
     const int fd = open((dir + "/" + name).c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
     assert(fd >= 0 && writer.begin(fd, dir + "/" + name, name) && writer.append(data.data(), data.size(), 0) && writer.end());
   }
   unlink((dir + "/m1").c_str());
-  std::string receipt;
-  assert(!writer.finish(receipt).empty() && receipt.empty());
+  assert(!writer.finish().empty());
   unlink((dir + "/m0").c_str());
   unlink((dir + "/m2").c_str());
 }
@@ -140,7 +150,8 @@ void cancel_midway(const std::string& dir, std::mt19937& rng) {
   std::atomic<bool> cancelled{false};
   archives::Timings timings;
   archives::Writer writer(cancelled, timings);
-  assert(writer.start(1 << 20));
+  archives::Receipt receipt(dir, "P5AR001:test");
+  assert(writer.start(1 << 20, receipt));
   std::vector<unsigned char> data(256 * 1024, 1);
   const int stop_after = rng() % 40;
   for (int i = 0; i < 40; ++i) {
@@ -154,6 +165,44 @@ void cancel_midway(const std::string& dir, std::mt19937& rng) {
 }
 }
 
+// A game folder's receipt (issue #52): 300,000 lines with long names, far over the 16 MiB a receipt kept
+// in memory could take, go through the line file and come back whole and in order, from any line on.
+void many_lines(const std::string& dir) {
+  const std::string tail(140, 'x');
+  {
+    archives::Receipt receipt(dir, "P5AR001:test");
+    for (int i = 0; i < 300000; ++i) assert(receipt.add(std::string(64, 'a' + i % 6), "Image0/data/" + std::to_string(i) + "/" + tail));
+    archives::Receipt::Lines* lines = nullptr;
+    assert(receipt.lines_from(299998, lines));
+    std::string line;
+    assert(lines->next(line) && line == std::string(64, 'a' + 299998 % 6) + "|Image0/data/299998/" + tail);
+    assert(lines->next(line) && !lines->next(line));
+    receipt.set_header("P5AR001:renamed");
+    assert(receipt.commit("receipt-out"));
+    struct stat st;
+    assert(stat((dir + "/.ps5-react-receipt-lines").c_str(), &st) != 0);
+  }
+  const int fd = open((dir + "/receipt-out").c_str(), O_RDONLY);
+  assert(fd >= 0);
+  archives::LineReader reader(fd);
+  std::string line;
+  assert(reader.next(line) && line == "P5AR001:renamed");
+  int count = 0;
+  for (; reader.next(line); ++count)
+    if (count % 50000 == 0) assert(line == std::string(64, 'a' + count % 6) + "|Image0/data/" + std::to_string(count) + "/" + tail);
+  assert(count == 300000 && reader.clean());
+  close(fd);
+  struct stat st;
+  assert(stat((dir + "/receipt-out").c_str(), &st) == 0 && st.st_size > 16 * 1024 * 1024);
+  unlink((dir + "/receipt-out").c_str());
+  // A receipt dropped before commit leaves no line file behind.
+  {
+    archives::Receipt receipt(dir, "P5AR001:test");
+    for (int i = 0; i < 20000; ++i) assert(receipt.add(std::string(64, 'b'), tail));
+  }
+  assert(stat((dir + "/.ps5-react-receipt-lines").c_str(), &st) != 0);
+}
+
 int main(int argc, char** argv) {
   const std::string dir = argc > 1 ? argv[1] : "/tmp/archive-writer-test";
   mkdir(dir.c_str(), 0700);
@@ -163,8 +212,9 @@ int main(int argc, char** argv) {
   write_error(dir);
   scattered(dir);
   sync_missing(dir);
+  many_lines(dir);
   for (int round = 0; round < 40; ++round) cancel_midway(dir, rng);
   for (int i = 0; i < 40; ++i) unlink((dir + "/c" + std::to_string(i)).c_str());
   assert(open_descriptors() == before);
-  std::puts("PASS: writer round trips, write error, cancel without leaks");
+  std::puts("PASS: writer round trips, write error, cancel without leaks, a 300,000-line receipt");
 }

@@ -14,15 +14,16 @@ import { colors } from '../ui/colors.js';
 import { Text, View } from '@ps5-react/core';
 
   var TRACK2 = 580;
+  // `open`: work with no known total (an extraction past its size estimate), drawn as a full, dimmed bar.
   var LABEL = { fontFamily: "Inter-Regular", fontSize: 21, lineHeight: 30 };
-  function RowProgress({ id, label, moving, waiting: waiting2, complete, detail: detail2 }) {
+  function RowProgress({ id, label, moving, waiting: waiting2, complete, open, detail: detail2 }) {
     const t2 = useT();
     const progress = useProgress(id);
     const { written = 0, total = null, bytesPerSecond = 0 } = progress ?? {};
     const left = moving && total && bytesPerSecond ? formatTimeLeft((total - written) / bytesPerSecond) : "";
     const size = detail2 ?? (complete ? formatBytes(total || written) : total ? t2("download.status.progress", { done: formatBytes(written), total: formatBytes(total) }) : written ? t2("download.soFar", { size: formatBytes(written) }) : "");
     return /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 12 }, children: [
-      /* @__PURE__ */ (0, jsx)(ProgressBar, { fraction: complete ? 1 : fractionOf(progress), width: TRACK2, active: moving || complete }),
+      /* @__PURE__ */ (0, jsx)(ProgressBar, { fraction: complete || open ? 1 : fractionOf(progress), width: TRACK2, active: (moving && !open) || complete }),
       /* @__PURE__ */ (0, jsxs)(View, { style: { width: 870, flexDirection: "row", justifyContent: "space-between" }, children: [
         waiting2 ? /* @__PURE__ */ (0, jsx)(View, { style: { width: 540 }, children: /* @__PURE__ */ (0, jsx)(ShimmerText, { textStyle: LABEL, background: colors.surface, children: label }) }) : /* @__PURE__ */ (0, jsxs)(Text, { style: { width: 540, fontFamily: "Inter-Regular", fontSize: 21, color: "#f2f2f3", numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 30 }, children: [
           fitBytes(label, SPAN_MAX),

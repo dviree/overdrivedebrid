@@ -91,6 +91,9 @@ export const FileSystem = {
   removeAsync: async path => { await networkTask(host().fs.removeAsync(path), 'fs.removeAsync', path, 'removals').done; },
   /** @param {string} from @param {string} to */
   rename: (from, to) => host().fs.rename(from, to),
+  /** Copies a file's bytes (readFile and writeFile carry text only), written beside `to` and renamed
+   * over it. @param {string} from @param {string} to */
+  copyFile: (from, to) => host().fs.copyFile(from, to),
   /** Sets a file's or directory's permission bits, such as 0o777. */
   chmod: (path, mode) => host().fs.chmod(path, mode),
   /** Mounted filesystems visible to the host process. Console access requires
