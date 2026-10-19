@@ -1,8 +1,7 @@
 name: build
 
-# Every push to main builds, and Run workflow builds any branch. Each build puts its files in a
-# draft release; publishing that draft creates its tag, and no build runs on tags, so players get
-# the very files that were tested.
+# Every push to main builds and is published as the latest release, which consoles update to.
+# Run workflow builds any branch, as a draft unless it is main. No build runs on tags.
 on:
   push:
     branches: [main]
@@ -91,12 +90,11 @@ jobs:
             ps5-react/dist/PPSA99058.receipt.json
           if-no-files-found: error
 
-      - name: Draft release
-        # Only people with write access see a draft, and the in-app update feed
-        # (releases/latest) never returns one, so a test build reaches nobody else.
-        # The draft is named after app/version.js and this build's number (fork.js):
-        # publishing it offers it to every console as an update. Older drafts are
-        # earlier builds of the same code, so they are removed.
+      - name: Release
+        # A build of main is published at once as the latest release, which every console running
+        # this fork reads (the in-app feed is releases/latest) and offers as an update. A build of
+        # another branch stays a draft, seen only by people with write access. The release is named
+        # after app/version.js and this build's number (fork.js).
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -104,10 +102,16 @@ jobs:
           test -n "$version" || { echo "no VERSION in app/version.js" >&2; exit 1; }
           tag="v$version.$GITHUB_RUN_NUMBER"
           assets="Overdrive.exfat update.zip"
+          # Earlier drafts are superseded by this build.
           for old in $(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | select(.draft) | .tag_name'); do
             gh release delete "$old" --yes || true
           done
-          gh release create "$tag" $assets --draft --target "$GITHUB_SHA" \
-            --title "Overdrive $tag" --notes "Build of $GITHUB_SHA. Publish it to update every console."
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            gh release create "$tag" $assets --target "$GITHUB_SHA" --latest \
+              --title "Overdrive $tag" --notes "MyLuxy/overdrive $version with TorBox and Premiumize. Build of $GITHUB_SHA."
+          else
+            gh release create "$tag" $assets --draft --target "$GITHUB_SHA" \
+              --title "Overdrive $tag" --notes "Test build of $GITHUB_SHA from $GITHUB_REF_NAME."
+          fi
           gh release view "$tag" --json isDraft,tagName,assets \
             --jq '"\(.tagName) draft=\(.isDraft) " + ([.assets[] | "\(.name) \(.size)"] | join(", "))'
