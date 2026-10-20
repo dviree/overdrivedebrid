@@ -32,6 +32,7 @@ constexpr std::uint64_t max_decoder_memory = 64ULL * 1024 * 1024;
 constexpr std::uint64_t mib = 1024 * 1024;
 constexpr std::uint64_t unbounded = UINT64_MAX;
 constexpr unsigned max_coders = 64;
+constexpr std::uint64_t max_7z_header_bytes = 32ULL * 1024 * 1024;
 const std::string too_much_memory = "This archive needs more memory to extract than the console app can use.";
 const std::string malformed = "Unsupported or incomplete archive.";
 const std::string too_many_entries = "Archive has too many entries.";
@@ -432,13 +433,13 @@ bool unpack_header(Volumes& in, Cursor& cursor, std::vector<unsigned char>& head
   if (!(refusal = fits(folder_memory(item, streams, in))).empty()) return false;
   const auto packed_size = streams.pack_sizes[0];
   const auto unpacked_size = item.sizes[0];
-  if (packed_size > max_metadata_bytes || unpacked_size > max_metadata_bytes) return false;
+  if (packed_size > max_metadata_bytes || unpacked_size > max_7z_header_bytes) return false;
   std::vector<unsigned char> packed(packed_size);
   header.assign(unpacked_size, 0);
   return in.read(signature_size + streams.pack_position, packed.data(), packed.size()) && decode_header(coder, packed, header);
 }
 
-std::string check(Volumes& in) {
+std::string check(Volumes& in, std::uint64_t& declared) {
   std::array<unsigned char, signature_size> signature{};
   if (!in.read(0, signature.data(), signature.size())) return malformed;
   const auto offset = little_endian(signature.data() + 12, 8);
@@ -476,6 +477,7 @@ std::string check(Volumes& in) {
   if (!cursor.ok) return malformed;
   std::uint64_t memory = 0;
   for (const auto& item : main.folders) memory = std::max(memory, folder_memory(item, main, in));
+  declared = memory;
   return fits(memory);
 }
 }
@@ -678,12 +680,18 @@ bool starts_with(const std::array<unsigned char, 8>& magic, std::string_view pre
 }
 
 std::string preflight(const std::vector<std::string>& sources) {
+  std::uint64_t seven_zip_memory = 0;
+  return preflight(sources, seven_zip_memory);
+}
+
+std::string preflight(const std::vector<std::string>& sources, std::uint64_t& seven_zip_memory) {
+  seven_zip_memory = 0;
   Volumes in(sources);
   std::array<unsigned char, 8> magic{};
   in.read(0, magic.data(), static_cast<std::size_t>(std::min<std::uint64_t>(magic.size(), in.size())));
   // libarchive searches executables for an embedded archive, which these checks do not follow.
   if (starts_with(magic, "MZ") || starts_with(magic, "\x7F" "ELF")) return "Self-extracting archives are not supported.";
-  if (starts_with(magic, "7z\xBC\xAF\x27\x1C")) return seven_zip::check(in);
+  if (starts_with(magic, "7z\xBC\xAF\x27\x1C")) return seven_zip::check(in, seven_zip_memory);
   if (starts_with(magic, rar5::signature)) return rar5::check(in, false);
   if (starts_with(magic, rar4::signature)) return rar4::check(in, false);
   // Compression around a TAR: only the outer layer is checked.

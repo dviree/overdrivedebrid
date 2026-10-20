@@ -3,6 +3,7 @@
 
 import { features, games, twins } from '../data/catalog.js';
 import { formatDate2, formatNumber2, t } from '../i18n/core.js';
+import { getHomebrew, homebrewApps, relatedHomebrew } from './homebrew.js';
 import { createPageCache } from './page-cache.js';
 import { pausedFilter } from './paused-hosts.js';
 import { createReleaseCache } from './release-cache.js';
@@ -78,14 +79,19 @@ import { FileSystem, Image } from '@ps5-react/core';
   }
   var genres = [...new Set(games.flatMap((game) => game.genres))].sort();
   var byId = new Map(entries.map((game) => [game.id, game]));
-  var getGame = (id) => byId.get(id);
+  // A homebrew app's page, download and favorite go through the same lookups as a game's.
+  var getGame = (id) => byId.get(id) ?? getHomebrew(id);
   function listedId(id) {
     const game = byId.get(id);
     if (!game || listed.has(game)) return id;
     return editionsOf(game).find((edition2) => listed.has(edition2) && edition2.platform === game.platform)?.id ?? id;
   }
+  // Downloads art to the disk cache ahead of the screens that show it. The homebrew icons go first: the
+  // Homebrew page shows about twenty at once, from a host that answers in about 400 ms. One call: the
+  // engine keeps a single warm list, which each call replaces.
   function warmCovers() {
-    Image.warm(sortGames(games, "relevance").filter((game) => game.art.cover).map((game) => game.art.cover));
+    const icons = homebrewApps().map((app) => app.art.cover).filter(Boolean);
+    Image.warm([...icons, ...sortGames(games, "relevance").filter((game) => game.art.cover).map((game) => game.art.cover)]);
   }
   var SORTS = [
     // New releases first: the library's sort menu opens on it.
@@ -197,7 +203,9 @@ import { FileSystem, Image } from '@ps5-react/core';
   var passes = (game, facet, picked) => !picked.length || (facet.any ? picked.some((value) => facet.has(game, value)) : picked.every((value) => facet.has(game, value)));
   function matching({ filters, query, wishlist }, skip) {
     const q = query.trim().toLowerCase();
-    return games.filter((game) => (!q || `${game.title} ${game.developer} ${game.publisher}`.toLowerCase().includes(q)) && FACETS.every((facet) => facet === skip || passes(game, facet, filters[facet.key])) && (!filters.wishlist || wishlist.includes(game.id)));
+    // Favorites can hold homebrew apps too; every other list is the game catalog's.
+    const pool = filters.wishlist ? [...games, ...homebrewApps()] : games;
+    return pool.filter((game) => (!q || `${game.title} ${game.developer} ${game.publisher}`.toLowerCase().includes(q)) && FACETS.every((facet) => facet === skip || passes(game, facet, filters[facet.key])) && (!filters.wishlist || wishlist.includes(game.id)));
   }
   var filterGames = (state) => matching(state);
   function facetCounts(state, facet) {
@@ -206,6 +214,7 @@ import { FileSystem, Image } from '@ps5-react/core';
   }
   var summaryOf = (game) => game.about.find((text) => text.length > 80 && text !== text.toUpperCase()) ?? game.shortDescription;
   function relatedGames(game, limit = 6) {
+    if (game.homebrew) return relatedHomebrew(game, limit);
     const shared = (other) => other.genres.filter((genre) => game.genres.includes(genre)).length;
     return games.filter((other) => other.id !== game.id && shared(other) > 0).sort((a, b) => shared(b) - shared(a) || b.recommendations - a.recommendations).slice(0, limit);
   }

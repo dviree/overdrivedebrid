@@ -7,12 +7,12 @@ No proprietary Sony modules are redistributed.
 | Dependency | Purpose and license |
 | --- | --- |
 | Embedded React | C engine, QuickJS bridge, reconciler, software compositor. Apache-2.0; revision `cf5dfe4fae966fe21a265acc3dd3b054d245f981`. |
-| ps5-homebrew-ui | EGL, controller, system, InputTracker, audio mixer and output, heap, CRT, shims, native tools. GPL-3.0-or-later; revision `4bd942579dd981b3df9c740438489ca6a614ddc0`. |
+| ps5-homebrew-ui | EGL, controller, system, InputTracker, audio mixer and output, heap, CRT, shims, native tools. GPL-3.0-or-later; revision `4bd942579dd981b3df9c740438489ca6a614ddc0`. Its repository (github.com/blackbearreloaded/ps5-homebrew-ui) is gone; the history up to that revision is kept, unchanged, on the `ps5-homebrew-ui` branch of [MyLuxy/overdrive-deps](https://github.com/MyLuxy/overdrive-deps). |
 | ProsperoStore elevation client | Optional cooperative filesystem-access client and pinned helper build. GPL-3.0-or-later; revision `22dca63607cf5f1f95006eda6ffb802607bed699`. |
 | PacBrew archive ports | Same hash-pinned v0.40.2 distribution: libarchive 3.7.4 (BSD), liblzma 5.4.6 (primarily public domain), bzip2 (bzip2 license), plus zlib/zstd/OpenSSL. Exact notice sources and hashes are in `licenses/archives-SOURCES.json`. |
 | PacBrew networking ports | Optional SHA-256-pinned v0.40.2 archive: curl 8.18.0 (curl license), OpenSSL 3.5.2 (Apache-2.0), zlib, zstd and libpsl; individual notices and source links follow the pinned ProsperoStore `third_party/PACBREW_LICENSES.json`. Native-title `compat.c` and `netdb.c` reuse that pinned reference under GPL-3.0-or-later. |
 | Lapy helper | Optional exact-title one-shot helper: mpereiraesaa/PS5-Lapy-JB-Daemon `54a095c0f19161825e845daa760a03b446e654fa`, MIT; protocol LGPL-2.1-or-later, ps5log GPL-3.0-or-later. The helper uses the app SDK v0.42 with `patches/lapy-sdk-042-attributes.patch`; source revision and ps5log hash are pinned in the lock file. |
-| ps5-opengl | SDK 1.0.0; GPL and per-component/Mesa licenses. The release includes sources and notices. |
+| ps5-opengl | SDK 1.0.0; GPL and per-component/Mesa licenses. The release includes sources and notices. Its repository (github.com/blackbearreloaded/ps5-opengl) is gone; the same archive, checked by its SHA-256, is kept at [MyLuxy/overdrive-deps](https://github.com/MyLuxy/overdrive-deps/releases/tag/ps5-opengl-v1.0.0). |
 | React / QuickJS-ng | React 18.3.1, reconciler 0.29.2, QuickJS-ng 0.15.0; MIT. npm lockfile and QuickJS commit are pinned. |
 | Tailwind CSS palette and scales | v3.4.17 default colors and theme values copied into `tools/tailwind/`; MIT. Build-time data only; the `tailwindcss` package is not installed or used. |
 | stb_image | v2.30 single-file JPEG/PNG decoder for remote images; public domain or MIT (choice). Fetched from a pinned commit URL and verified by SHA-256 (`stbImage` in the lock file); builds copy its license to `notices/stb_image-LICENSE`. |
@@ -20,7 +20,7 @@ No proprietary Sony modules are redistributed.
 | SheenBidi | 3.0.0 (Apache-2.0), SHA-256-pinned release archive (`sheenBidi`): the Unicode bidirectional algorithm for right-to-left text, compiled as one translation unit into both hosts. Builds copy its license to `notices/SheenBidi-LICENSE`. |
 | Noto fonts | Noto Sans SC and JP 2.004, Devanagari 2.007, Bengali 3.011 and Arabic 2.013 (SIL OFL 1.1), pinned by commit and SHA-256 (`notoFonts`). Packaged only for the scripts an app lists in `textFonts`, subset by `tools/text_fonts.py`; builds then copy `licenses/Noto-fonts-LICENSE.txt` to `notices/`. |
 | Material Design sound resources | The starter's interface sounds, (c) Google, CC BY 4.0: six files from the pack's `wav` set, mixed to mono, trimmed, faded and normalized by `tools/ui_sounds.mjs`. Attribution and changes: `licenses/material-sounds-NOTICE.txt`; builds copy it to `notices/material-sounds-NOTICE.txt`. Keep it with any app that ships these sounds. |
-| UnRAR | RarLab unrarsrc 7.2.1, SHA-256-pinned (`unrarSource`), patched by `patches/unrar-worker.patch`. UnRAR license (free to use for extracting RAR archives; not GPL-compatible). Linked only into `rar-extract` (`native/rar_worker`, MIT), a separate program the engine starts for RAR sets (the payload loader on the console, a child process on the desktop); never linked into the engine. Builds copy its license to `notices/unRAR-license.txt`. |
+| UnRAR | RarLab unrarsrc 7.2.1, SHA-256-pinned (`unrarSource`), patched by `patches/unrar-worker.patch`. UnRAR license (free to use for extracting RAR archives; not GPL-compatible). Linked only into `rar-extract` (`native/rar_worker`, MIT), a separate program the engine starts for RAR sets (the payload loader on the console, a child process on the desktop); never linked into the engine. `rar-extract` also links the archive ports' libarchive and its libraries, for 7z archives over the engine's heap budget. Builds copy its license to `notices/unRAR-license.txt`. |
 | FFmpeg | 7.1.5, SHA-256-pinned release archive (`ffmpeg` in the lock file), built static by `tools/ffmpeg.py` with the same components for both hosts: libavformat, libavcodec, libavutil, libswresample and libswscale, configured `--enable-version3` without GPL parts, so LGPL-3.0-or-later. Linked only into apps with `"video": true`; the PS5 build uses the pinned OpenSSL for https. Builds copy `LICENSE.md` and `COPYING.LGPLv3` to `notices/`. The build's corresponding source is the pinned archive plus that configure line. |
 | ArtCNN C4F16 | The mpv user shader `GLSL/ArtCNN_C4F16.glsl` of [ArtCNN](https://github.com/Artoriuz/ArtCNN) at commit `8789539dfae120f2877a89bb6218026d56809612`, unchanged, embedded by `native/shared/upscalers/ArtCNN_C4F16.glsl.inc` for `<Video upscale>`. MIT; builds copy `licenses/ArtCNN-LICENSE` to `notices/`. |
 | Anime4K Upscale CNN x2 | The mpv user shaders `glsl/Upscale/Anime4K_Upscale_CNN_x2_{S,M,L,VL,UL}.glsl` of [Anime4K](https://github.com/bloc97/Anime4K) at commit `7684e9586f8dcc738af08a1cdceb024cc184f426`, unchanged, embedded by `native/shared/upscalers/` for `<Video upscale>`. MIT; builds copy `licenses/Anime4K-LICENSE` to `notices/`. |
@@ -29,8 +29,8 @@ No proprietary Sony modules are redistributed.
 | Inter / LLVM / payload SDK | Inter: SIL OFL. LLVM: Apache-2.0 with exceptions. The public SDK contains separately licensed components. |
 
 Sources: [Embedded React](https://github.com/TheMasterCoder007/embedded-react),
-[ps5-homebrew-ui](https://github.com/blackbearreloaded/ps5-homebrew-ui),
-[ps5-opengl 1.0.0](https://github.com/blackbearreloaded/ps5-opengl/releases/tag/v1.0.0),
+[ps5-homebrew-ui](https://github.com/MyLuxy/overdrive-deps/tree/ps5-homebrew-ui),
+[ps5-opengl 1.0.0](https://github.com/MyLuxy/overdrive-deps/releases/tag/ps5-opengl-v1.0.0),
 [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk),
 [QuickJS-ng](https://github.com/quickjs-ng/quickjs),
 [stb](https://github.com/nothings/stb),
