@@ -33,11 +33,14 @@ set(ERUI_XFORM_CACHE_SLOTS 2 CACHE STRING "" FORCE)
 set(ERUI_MAX_ANIM_VALUES 1024 CACHE STRING "" FORCE)
 set(ERUI_MAX_VALUE_BINDINGS 8 CACHE STRING "" FORCE)
 # Photos are baked at half size and scaled bilinearly. The scaler and gradient assemble rows of up to
-# 2560 px (+7 KB per worker each over 800 px) and render wider ones in chunks. 256 image slots cost
-# +11 KB at 88 B per slot.
+# 2560 px (+7 KB per worker each over 800 px) and render wider ones in chunks. The registry holds every
+# decoded image: the cache's 256 (image_loader.hpp kCacheEntries, in use or not) plus the app's baked
+# ones. At 256 slots, a cache of 256 small images (an app's icons, under its 64 MiB) left none for the
+# rest, and new images were discarded ("the engine image registry is full"). 512 slots cost 45 KB at
+# 88 B per slot.
 set(ERUI_BILINEAR_SCALE ON CACHE BOOL "" FORCE)
 set(ERUI_MAX_IMG_ROW_PIXELS 2560 CACHE STRING "" FORCE)
-set(ERUI_IMAGE_REGISTRY_MAX 256 CACHE STRING "" FORCE)
+set(ERUI_IMAGE_REGISTRY_MAX 512 CACHE STRING "" FORCE)
 # View backgroundGradient (linear and radial; also <Svg> gradient fills): about 5 KB of code, an 8 KB
 # colour ramp and a 10 KB row per render worker; nodes without a gradient pay nothing per frame.
 set(ERUI_GRADIENT ON CACHE BOOL "" FORCE)

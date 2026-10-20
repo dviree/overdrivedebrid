@@ -646,6 +646,18 @@ std::string rar_request(const Request& request, const std::string& staging) {
   for (const auto& path : request.sources) text += "source " + path + "\n";
   return text + "end\n";
 }
+// A 7z the heap cannot decode goes to rar-extract when its decoder memory is no more than this. A probe on a
+// console allocated up to 384 MiB in under 80 ms; from 512 MiB the system took seconds to free memory for it
+// and the console froze. This stays under that with room for what the app and the worker hold besides,
+// and admits the 256 MiB LZMA2 dictionary repacks use.
+constexpr std::uint64_t seven_zip_worker_memory = 288ULL * 1024 * 1024;
+std::string seven_zip_request(const Request& request, const std::string& staging, std::uint64_t memory) {
+  std::string text = "7ZX1\nmemory " + std::to_string(memory) + "\nlimit " + std::to_string(request.max_bytes) + "\n";
+  for (auto extension : image_extensions) text += "flatten " + std::string(extension) + "\n";
+  text += "reserved .ps5-react-\ndest " + staging + "\n";
+  for (const auto& path : request.sources) text += "source " + path + "\n";
+  return text + "end\n";
+}
 // One file the worker wrote and synced: "<sha256> <size> <path>". It is checked as libarchive's entries
 // are, since the worker is a separate program.
 std::string rar_file(Job& job, const std::string& staging, const std::string& report, std::uint64_t& total, Receipt& receipt) {
@@ -667,15 +679,18 @@ std::string rar_file(Job& job, const std::string& staging, const std::string& re
   if (++job.snapshot.entries > max_entries) return "Archive has too many entries.";
   return {};
 }
-// False when the worker could not be started, before anything was written: libarchive extracts instead.
-bool extract_rar(Job& job, const std::string& staging, Receipt& receipt, std::string& error) {
+// Runs rar-extract on `request` (a RAR set's or a 7z's, `kind` naming which in traces and errors). False
+// when the worker could not be started, before anything was written.
+bool extract_worker(Job& job, const std::string& staging, Receipt& receipt, std::string& error, const std::string& request,
+                    const std::string& kind) {
+  const std::string name = (kind == "RAR" ? std::string("rar") : kind) + " worker";
   std::string unavailable;
-  const int stream = start_rar_worker(rar_request(job.request, staging), unavailable);
+  const int stream = start_rar_worker(request, unavailable);
   if (stream < 0) {
-    trace("rar worker unavailable", unavailable.c_str());
+    trace((name + " unavailable").c_str(), unavailable.c_str());
     return false;
   }
-  trace("rar worker started");
+  trace((name + " started").c_str());
   const auto started = std::chrono::steady_clock::now();
   std::string pending, timings;
   std::uint64_t total = 0;
@@ -713,7 +728,7 @@ bool extract_rar(Job& job, const std::string& staging, Receipt& receipt, std::st
         job.snapshot.total = std::min(declared, job.request.max_bytes);
       } else if (line == "s" && !cancel_sent) {
         // Every file is decoded; the worker is writing out and syncing what it still holds.
-        trace("rar worker finishing");
+        trace((name + " finishing").c_str());
         enter(job, "finishing");
       } else if (line.starts_with("t ")) {
         timings = line.substr(1);
@@ -728,7 +743,7 @@ bool extract_rar(Job& job, const std::string& staging, Receipt& receipt, std::st
   }
   close_rar_worker(stream);
   job.worker_unconfirmed = !finished && !exited;
-  trace("rar worker finished", error.c_str());
+  trace((name + " finished").c_str(), error.c_str());
   {
     std::lock_guard lock(job.mutex);
     // The worker's own timings, as its "t" line names them; one from an older worker has none.
@@ -738,17 +753,22 @@ bool extract_rar(Job& job, const std::string& staging, Receipt& receipt, std::st
       const auto from = at + std::strlen(key) + 2;
       return timings.substr(from, timings.find(' ', from) - from);
     };
-    const auto summary = "RAR worker " + std::to_string(total >> 20) + "MiB " + std::to_string(job.snapshot.entries)
+    const auto summary = kind + " worker " + std::to_string(total >> 20) + "MiB " + std::to_string(job.snapshot.entries)
         + " entries total=" + std::to_string(elapsed_us(started) / 1000) + "ms threads=" + field("threads") + " cores=" + field("cores")
         + " decode-cpu=" + field("cpu") + " write=" + field("write") + " fsync=" + field("fsync") + " waited=" + field("waited");
     trace("throughput", summary.c_str());
   }
-  if (error.empty() && !job.cancelled && !succeeded) error = finished ? "RAR extraction failed." : "The RAR worker stopped before finishing.";
+  if (error.empty() && !job.cancelled && !succeeded)
+    error = finished ? kind + " extraction failed." : "The " + kind + " worker stopped before finishing.";
   if (error.empty() && !job.cancelled) {
     std::lock_guard lock(job.mutex);
     job.snapshot.written = total;
   }
   return true;
+}
+// False when the worker could not be started, before anything was written: libarchive extracts instead.
+bool extract_rar(Job& job, const std::string& staging, Receipt& receipt, std::string& error) {
+  return extract_worker(job, staging, receipt, error, rar_request(job.request, staging), "RAR");
 }
 std::string staging_path(const std::string& destination, unsigned attempt) {
   return destination + ".extracting" + (attempt ? "-" + std::to_string(attempt) : "");
@@ -810,12 +830,20 @@ void run(const std::shared_ptr<Job>& pointer) {
         std::none_of(request.sources.begin(), request.sources.end(), [](const std::string& path) { return path.find('\n') != std::string::npos; });
     return found.kind != "rar" || !lines ? std::string("Only a RAR set can be extracted while it downloads.") : found.refusal;
   };
-  if (const auto refusal = request.stream ? streamed() : preflight(request.sources); !refusal.empty()) {
+  std::uint64_t seven_zip_memory = 0;
+  const auto refusal = request.stream ? streamed() : preflight(request.sources, seven_zip_memory);
+  // A 7z refused for the heap's memory alone, within rar-extract's budget, goes to the worker; its paths go
+  // to the worker's line protocol. Without a worker the refusal stands.
+  const bool lines = request.destination.find('\n') == std::string::npos &&
+      std::none_of(request.sources.begin(), request.sources.end(), [](const std::string& path) { return path.find('\n') != std::string::npos; });
+  const bool seven_zip_worker = !refusal.empty() && seven_zip_memory && seven_zip_memory <= seven_zip_worker_memory && lines;
+  if (!refusal.empty() && !seven_zip_worker) {
     trace("preflight refused", refusal.c_str());
     fail(job, refusal);
     return;
   }
-  trace("preflight ok");
+  if (seven_zip_worker) trace("preflight 7z for the worker, MiB", std::to_string(seven_zip_memory >> 20).c_str());
+  else trace("preflight ok");
   if (!lstat(staging.c_str(), &st)) {
     std::string owner;
     // Empty staging with no ownership record is this task's own, left by a crash before it wrote one;
@@ -867,6 +895,9 @@ void run(const std::shared_ptr<Job>& pointer) {
   // extracts it once every volume is there.
   if (request.stream) {
     if (!extract_rar(job, staging, receipt, error) && error.empty()) error = "Extracting while downloading needs the RAR worker.";
+  } else if (seven_zip_worker) {
+    if (!extract_worker(job, staging, receipt, error, seven_zip_request(request, staging, seven_zip_memory), "7z") && error.empty())
+      error = "This archive needs the payload loader to extract: none answered on port 9021.";
   } else if (!rar_volumes(request) || !extract_rar(job, staging, receipt, error)) {
     const MemoryHold memory;
     std::unique_ptr<Rar5PasswordReader> decrypted;

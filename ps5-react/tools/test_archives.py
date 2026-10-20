@@ -13,15 +13,25 @@ def number7z(v):
   if v<1<<(8*n+7-n):return bytes([(0xFF00>>n)&0xFF|v>>(8*n)])+(v&((1<<8*n)-1)).to_bytes(n,"little")
  return b"\xff"+v.to_bytes(8,"little")
 
-def encode_7z_header(plain):
+def encode_7z_header(plain, extra_header_bytes=0):
  """Rewrites a bsdtar 7z with the LZMA-compressed header 7-Zip writes by default."""
  offset,size=struct.unpack("<QQ",plain[12:28]);header=plain[32+offset:32+offset+size]
+ if extra_header_bytes:header+=bytes(extra_header_bytes)
  packed=lzma.compress(header,format=lzma.FORMAT_RAW,filters=[{"id":lzma.FILTER_LZMA1,"dict_size":1<<16}])
  coder=b"\x23\x03\x01\x01"+number7z(5)+b"\x5d"+(1<<16).to_bytes(4,"little")
  encoded=(b"\x17\x06"+number7z(offset)+number7z(1)+b"\x09"+number7z(len(packed))+b"\x00"
   +b"\x07\x0b"+number7z(1)+b"\x00"+number7z(1)+coder+b"\x0c"+number7z(len(header))+b"\x00\x00")
  start=struct.pack("<QQI",offset+len(packed),len(encoded),binascii.crc32(encoded))
  return plain[:8]+struct.pack("<I",binascii.crc32(start))+start+plain[32:32+offset]+packed+encoded
+
+def declare_7z_dictionary(plain, bits):
+ """A bsdtar LZMA2 7z whose plain header declares the dictionary `bits` names (LZMA2's dictionary byte) instead
+ of the one its data was compressed with: a decoder with a larger window reads the same data."""
+ offset,size=struct.unpack("<QQ",plain[12:28]);at=32+offset;header=bytearray(plain[at:at+size])
+ coder=header.find(b"\x21\x21\x01");assert coder>=0,"no LZMA2 coder in the header"
+ header[coder+3]=bits
+ start=struct.pack("<QQI",offset,size,binascii.crc32(header))
+ return plain[:8]+struct.pack("<I",binascii.crc32(start))+start+plain[32:at]+bytes(header)+plain[at+size:]
 
 def vint(v):
  out=b""
@@ -573,10 +583,42 @@ def main():
   subprocess.run([prefix+"/bin/bsdtar","--format=7zip","--options=7zip:compression=lzma2,7zip:compression-level=9","-cf",str(big),"-C",str(root),"payload.bin"],check=True)
   # 7-Zip ultra's 64 MiB dictionary is the budget itself.
   assert run("big-7zip",[big])[0]=="completed"
+  # A 7z whose dictionary the app's heap cannot hold extracts in rar-extract, up to the worker's budget
+  # (288 MiB): 256 MiB is what repacks use. Past it, and without a worker, the refusal stands.
+  wide=root/"wide.7z";wide.write_bytes(declare_7z_dictionary(big.read_bytes(),32))
+  assert subprocess.check_output([str(binary),"preflight",str(wide)],text=True).strip()==TOO_BIG
+  traced=phases("wide-7zip",[wide])
+  assert "preflight 7z for the worker, MiB 256" in traced and "7z worker started" in traced and "7z worker finishing" in traced,traced
+  assert (root/"wide-7zip/payload.bin").read_bytes()==DATA
+  wider=root/"wider.7z";wider.write_bytes(declare_7z_dictionary(big.read_bytes(),34))
+  assert run("wider-7zip",[wider])[1:]==["0",TOO_BIG]
+  assert not (root/"wider-7zip").exists() and not (root/"wider-7zip.extracting").exists()
+  absent=subprocess.run([str(binary),str(root/"wide-no-worker"),str(1024*1024),str(wide)],capture_output=True,text=True,timeout=20,
+                        env={**os.environ,"PS5_REACT_RAR_WORKER":str(root/"no-such-worker")}).stdout.splitlines()
+  assert absent[1:]==["0","This archive needs the payload loader to extract: none answered on port 9021."],absent
+  assert not (root/"wide-no-worker").exists() and not (root/"wide-no-worker.extracting").exists()
+  # The worker's own answer to a 7z request: it claims the decoder's memory before decoding.
+  request=f"7ZX1\nmemory {256<<20}\nlimit {1<<30}\nreserved .ps5-react-\ndest {root/'raw-7z'}\nsource {wide}\nend\n"
+  (root/"raw-7z").mkdir()
+  # Its input stays open: the worker reads a closed one as the engine gone.
+  process=subprocess.Popen([os.environ["PS5_REACT_RAR_WORKER"]],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
+  process.stdin.write(request);process.stdin.flush()
+  lines=process.stdout.read().splitlines();process.stdin.close();process.wait(timeout=60)
+  assert lines[0]=="ready" and lines[-1]=="ok" and any(line.startswith("f ") and line.endswith(" payload.bin") for line in lines),lines
+  assert any(line.startswith("t ") and " claim=" in line for line in lines),lines
+  assert (root/"raw-7z/payload.bin").read_bytes()==DATA
   encoded=root/"encoded.7z";encoded.write_bytes(encode_7z_header(seven.read_bytes()))
   result=run("encoded-7zip",[encoded])
   assert result[0]=="completed",result
   assert (root/"encoded-7zip/payload.bin").read_bytes()==DATA
+  large_header=root/"encoded-large-header.7z"
+  large_header.write_bytes(encode_7z_header(seven.read_bytes(),17*1024*1024))
+  result=subprocess.check_output([str(binary),"preflight",str(large_header)],text=True).strip()
+  assert result=="",result
+  oversized=root/"encoded-oversized-header.7z"
+  oversized.write_bytes(encode_7z_header(seven.read_bytes(),33*1024*1024))
+  result=subprocess.check_output([str(binary),"preflight",str(oversized)],text=True).strip()
+  assert result=="Unsupported or incomplete archive.",result
   encoded_big=root/"encoded-big.7z";encoded_big.write_bytes(encode_7z_header(big.read_bytes()))
   assert run("encoded-big-7zip",[encoded_big])[0]=="completed"
   p=root/"preset9.tar.xz";p.write_bytes(lzma.compress(tar.read_bytes(),preset=9))

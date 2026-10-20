@@ -6,6 +6,37 @@
   answers a computer's browser through a JavaScript handler. A native worker reads up to 16
   connections at once with bounded requests; `LocalServer.address()` gives the console's IPv4
   address. Tested on Linux with the shared implementation; not yet on PS5 hardware.
+## Unreleased — image registry headroom
+
+- The engine's image registry holds 512 images (was 256). It holds every decoded image, the decoded
+  cache's up to 256 and the app's baked ones, so a cache full of small images (an app's icons, well under
+  its 64 MiB) filled it, and each new image after that was discarded with "Image.load: the engine image
+  registry is full" and never drew. 512 slots cost 45 KB.
+- When the registry is full all the same, the image about to be published makes room: cached images
+  nothing holds are evicted, least recently used first, until it fits; only when every cached image is
+  held is it discarded. The `images:` stats line adds `cached`, `pinned` (held) and `registry` counts.
+
+## Unreleased — dependencies kept at MyLuxy/overdrive-deps
+
+- ps5-homebrew-ui and the ps5-opengl SDK are no longer available from github.com/blackbearreloaded;
+  builds worked only from CI's cache. The pinned ps5-homebrew-ui history and the SDK archive are kept,
+  unchanged, at MyLuxy/overdrive-deps, and the lock file and the build fetch them there. The revision
+  and the SDK's SHA-256 are the same.
+
+## Unreleased — large 7z archives in rar-extract
+
+- A 7z whose decoder needs more than the title heap's 64 MiB, up to 288 MiB, is extracted by
+  `rar-extract` (a `7ZX1` request, `native/rar_worker/sevenzip.cpp`, libarchive) in its own process
+  instead of being refused: repacks set a 256 MiB LZMA2 dictionary (issue #57, Cyberpunk 2077). The
+  preflight reports the memory a 7z declares (`preflight(sources, seven_zip_memory)`); the engine sends
+  such a 7z to the worker over the RAR worker's protocol and checks its files the same way.
+- The worker takes the decoder's memory and touches every page before decoding, and stops when the
+  console needs over a second to give it: a payload's `malloc` has no ceiling of its own, and a probe
+  that took 512 MiB and more froze a console's interface. The process exits after each archive, which
+  hands the memory back.
+- What both extractors share (report lines, path rule, SHA-256, the writer thread) moved from
+  `rar_worker.cpp` to `worker_io.hpp`.
+
 ## Unreleased — home-screen backgrounds
 
 - The build copies `.dds` files from an app's `sce_sys/` as well as `.png`: the home screen shows

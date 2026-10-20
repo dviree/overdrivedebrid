@@ -71,7 +71,8 @@ import { DownloadFormats, Text, View, motion } from '@ps5-react/core';
     const begin = () => {
       if (stale) restart();
       else if (lacking) return;
-      else if (status === "idle" && release) onRequestDialog({ kind: "tips", game, release, submit: () => download.advance(), changeSource: () => chooseSource() });
+      // A homebrew app has one source, its developer's GitHub release: the tips are about choosing hosts.
+      else if (status === "idle" && release && !game.homebrew) onRequestDialog({ kind: "tips", game, release, submit: () => download.advance(), changeSource: () => chooseSource() });
       else download.advance();
     };
     const { openEdition, focusLater, push } = useNavActions();

@@ -78,7 +78,7 @@ jobs:
           # This fork's own pieces are still wired in.
           grep -q "createTorboxResolver" app/state/downloads.js
           grep -q "createPremiumizeResolver" app/state/downloads.js
-          grep -q "startRemote" app/index.jsx
+          grep -q "fork-start.js" app/index.jsx && grep -q "startRemote" app/fork-start.js
           grep -q "FORK_FEED" app/state/update.js
 
       - name: Push and build

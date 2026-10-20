@@ -612,7 +612,14 @@ read to refuse archives whose declared decoder windows (7z LZMA/LZMA2/PPMd/zstd
 and BCJ2 buffers, RAR5 windows, RAR PPMd, ZIP LZMA/XZ/zstd/PPMd, and an outer
 xz/zstd/lzip/lzma layer) exceed 64 MiB, since libarchive has no memory limit
 and the title's heap is fixed. That budget assumes nothing else large runs during extraction: don't
-extract while downloading. Self-extracting executables are refused. This API does not install PKGs or
+extract while downloading. A 7z refused for that alone, whose largest folder declares at most 288 MiB
+(the 256 MiB LZMA2 dictionary repacks use), is extracted by `rar-extract` instead, in a process of its
+own started through the payload loader, with the console's memory rather than the title's heap. It first
+takes that memory and writes to every page; when the console needs over a second to hand it over (it is
+freeing memory from everything else: a probe froze a console from 512 MiB on), it fails with "The console
+has too little free memory to extract this archive now. Close other apps and retry." before decoding.
+Without a payload loader it fails with "This archive needs the payload loader to extract: none answered
+on port 9021." Over 288 MiB the memory refusal stands. Self-extracting executables are refused. This API does not install PKGs or
 register games. Desktop extraction and successful PS5 linking are not console
 execution evidence.
 

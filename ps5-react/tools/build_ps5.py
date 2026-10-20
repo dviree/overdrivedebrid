@@ -64,7 +64,9 @@ def main():
                PS5_CLANG=str(llvm / "clang"), PS5_PAYLOAD_SDK=str(sdk), USE_CCACHE="0")
 
     archive = args.opengl_archive or DEPS / "ps5-opengl-sdk-1.0.0.tar.gz"
-    fetch("https://github.com/blackbearreloaded/ps5-opengl/releases/download/v1.0.0/ps5-opengl-sdk-1.0.0.tar.gz",
+    # The original release (github.com/blackbearreloaded/ps5-opengl) is gone; the same archive, checked by
+    # its hash, is kept at MyLuxy/overdrive-deps.
+    fetch("https://github.com/MyLuxy/overdrive-deps/releases/download/ps5-opengl-v1.0.0/ps5-opengl-sdk-1.0.0.tar.gz",
           archive, GL_HASH)
     gl = DEPS / "ps5-opengl-sdk-1.0.0/sdk"
     if not gl.exists():
@@ -242,9 +244,10 @@ def main():
     run([sdk / "bin/prospero-clang", "-std=gnu11", "-O2", "-Wall", "-Wextra", "-Werror", "-o", installer,
          ROOT / "native/ps5/payloads/pkg_installer.c", "-lkernel_sys", "-lSceUserService"],
         env=env, log=BUILD / "pkg-installer.log")
-    # RAR sets extract in a payload of their own: UnRAR's license keeps its code out of this GPL app.
+    # RAR sets extract in a payload of their own: UnRAR's license keeps its code out of this GPL app. So
+    # does a 7z that needs more memory than the app's heap gives, with the engine's own libarchive.
     rar_extract = build_rar_worker(BUILD / "rar-extract.elf", [sdk / "bin/prospero-clang++"],
-                                   ["-I", archive_ports / "include"], [archive_ports / "lib/libcrypto.a", builtins], env)
+                                   ["-I", archive_ports / "include"], [*archive_libs, builtins], env)
     # Opens the app again after it closes, which the app itself cannot do.
     relauncher = BUILD / "relauncher.elf"
     run([sdk / "bin/prospero-clang", "-std=gnu11", "-O2", "-Wall", "-Wextra", "-Werror", "-o", relauncher,

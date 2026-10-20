@@ -152,6 +152,9 @@ using Body = std::shared_ptr<const Bytes>;
 struct Counters {
   std::atomic<std::uint64_t> loads{0}, decoded_hits{0}, encoded_hits{0}, disk_hits{0}, fetches{0}, decodes{0},
     decode_us{0}, cancelled{0}, aborted{0}, retries{0}, failed{0}, shown{0}, shown_ms{0}, shown_max_ms{0};
+  // After each poll: decoded images in the cache, those an element or prefetch still holds, and the
+  // engine registry's slots in use (images published from the cache plus the app's baked ones).
+  std::atomic<std::uint64_t> cached{0}, pinned{0}, registry{0};
 } counters;
 // `last`: the latest failure's reason, so the stats line says why an origin fails.
 struct Origin { std::string host, last; std::uint64_t requests = 0, failures = 0, ms = 0, bytes = 0; };
@@ -647,7 +650,22 @@ public:
     const bool lowered = budget < budget_;
     budget_ = budget;
     if (over_budget_ || lowered) trim(evict);
+    std::uint64_t cached = 0, pinned = 0;
+    for (const auto& [id, entry] : by_id_)
+      if (entry->reported && entry->pixels) { ++cached; pinned += entry->refs ? 1 : 0; }
+    counters.cached = cached;
+    counters.pinned = pinned;
     return out;
+  }
+
+  bool evict_unused(std::uint32_t keep, void (*evict)(std::uint32_t)) {
+    EntryPtr oldest;
+    for (const auto& [id, entry] : by_id_)
+      if (id != keep && entry->reported && entry->pixels && !entry->refs && (!oldest || entry->used < oldest->used)) oldest = entry;
+    if (!oldest) return false;
+    evict(oldest->id);
+    forget(*oldest);
+    return true;
   }
 
 private:
@@ -1075,6 +1093,8 @@ std::uint32_t load(const std::string& url, int width, int height, Fit fit, bool 
 void release(std::uint32_t id, bool prefetch) { service.release(id, prefetch); }
 void warm(std::vector<std::string> urls) { service.warm(std::move(urls)); }
 std::vector<Result> poll(void (*evict)(std::uint32_t)) { return service.poll(evict); }
+bool evict_unused(std::uint32_t keep, void (*evict)(std::uint32_t)) { return service.evict_unused(keep, evict); }
+void note_registry(unsigned used) { counters.registry = used; }
 Memory memory() { return {encoded_bytes.load(), decoded_bytes.load()}; }
 void set_cache_bytes(std::size_t bytes) { cache_bytes = bytes; }
 void hold_memory(bool hold) { holds += hold ? 1 : -1; }
@@ -1088,7 +1108,8 @@ std::string stats() {
   const std::uint64_t decodes = counters.decodes;
   std::snprintf(line, sizeof line,
                 "loads=%llu decoded-cache=%llu encoded-cache=%llu disk=%llu net=%llu decodes=%llu (%.1f ms avg) "
-                "shown=%llu (%llu ms avg, %llu max) cancelled=%llu aborted=%llu retries=%llu failed=%llu",
+                "shown=%llu (%llu ms avg, %llu max) cancelled=%llu aborted=%llu retries=%llu failed=%llu "
+                "cached=%llu pinned=%llu registry=%llu",
                 static_cast<unsigned long long>(counters.loads.load()), static_cast<unsigned long long>(counters.decoded_hits.load()),
                 static_cast<unsigned long long>(counters.encoded_hits.load()), static_cast<unsigned long long>(counters.disk_hits.load()),
                 static_cast<unsigned long long>(counters.fetches.load()), static_cast<unsigned long long>(decodes),
@@ -1096,7 +1117,9 @@ std::string stats() {
                 static_cast<unsigned long long>(counters.shown ? counters.shown_ms / counters.shown : 0),
                 static_cast<unsigned long long>(counters.shown_max_ms.load()),
                 static_cast<unsigned long long>(counters.cancelled.load()), static_cast<unsigned long long>(counters.aborted.load()),
-                static_cast<unsigned long long>(counters.retries.load()), static_cast<unsigned long long>(counters.failed.load()));
+                static_cast<unsigned long long>(counters.retries.load()), static_cast<unsigned long long>(counters.failed.load()),
+                static_cast<unsigned long long>(counters.cached.load()), static_cast<unsigned long long>(counters.pinned.load()),
+                static_cast<unsigned long long>(counters.registry.load()));
   std::string out = line;
   std::vector<Origin> busiest;
   { std::lock_guard lock(origins_mutex); busiest = origins; }
@@ -1123,6 +1146,8 @@ std::uint32_t load(const std::string& url, int, int, Fit, bool, Result&, std::st
 void release(std::uint32_t, bool) {}
 void warm(std::vector<std::string>) {}
 std::vector<Result> poll(void (*)(std::uint32_t)) { return {}; }
+bool evict_unused(std::uint32_t, void (*)(std::uint32_t)) { return false; }
+void note_registry(unsigned) {}
 Memory memory() { return {}; }
 void set_cache_bytes(std::size_t) {}
 void hold_memory(bool) {}
