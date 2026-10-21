@@ -2,10 +2,35 @@
 
 ## Unreleased — an HTTP server on the local network
 
-- Add `LocalServer` (native ABI v19, `server.*`): an app listens on a port of the local network and
+- Add `LocalServer` (native ABI v20, `server.*`): an app listens on a port of the local network and
   answers a computer's browser through a JavaScript handler. A native worker reads up to 16
   connections at once with bounded requests; `LocalServer.address()` gives the console's IPv4
   address. Tested on Linux with the shared implementation; not yet on PS5 hardware.
+## Unreleased — requests beside a download
+
+- `Http.request` (and every task without a file destination) runs on a network thread of its own,
+  apart from file downloads. The one service ran its tasks one at a time, so while a download went on
+  for minutes every request waited behind it: the app's JSON, ShadowMount+'s local API, a host's page
+  for the next download. Task ids stay unique across both; only the download service starts and stops
+  libSceNet, and only it holds the disk buffers and writer threads.
+
+## Unreleased — traditional Chinese text
+
+- Add the `chinese-traditional` text font: Noto Sans TC 2.004, subset to Big5 level 1 (5,401 hanzi
+  and its symbols). Han characters take it first when the language is `zh-Hant` (or `zh` with region
+  TW, HK or MO); in other languages it comes after the simplified Chinese font and before the
+  Japanese one, so a character GB 2312 lacks no longer draws in Japanese forms when both are listed.
+
+## Unreleased — header checks off the render thread
+
+- Add `Archives.inspectAsync(sources)` (ABI v19): `inspect` on a native worker thread, one at a time,
+  through `archives.inspectAsync`, `inspections.poll` and `inspections.cancel`. A read of a download's
+  growing file waits behind its writes while they keep the drive at its write rate: on a console
+  downloading at ~100 MB/s to internal storage, `inspect` on the `.part` file held the render thread
+  until the download ended (122 s and 341 s in a tester's log, issue #71), and a probe writing that way
+  reproduced it (18 s at 115 MiB/s, a few ms at 100 MiB/s).
+- Each async inspection logs when it is queued and when it is done, with the time it waited and took.
+
 ## Unreleased — image registry headroom
 
 - The engine's image registry holds 512 images (was 256). It holds every decoded image, the decoded

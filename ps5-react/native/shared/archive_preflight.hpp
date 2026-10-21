@@ -24,4 +24,21 @@ struct Inspection { std::string kind, refusal, title{}; };
 // `inspect_budget` (100 ms; tests change it).
 Inspection inspect(const std::vector<std::string>& sources);
 extern std::chrono::milliseconds inspect_budget;
+
+// inspect() on a worker thread, one at a time in the order asked. A read of a download's growing file
+// waits behind its writes while they keep the drive busy: on the console, at the drive's write rate,
+// one waited until the download ended and held the render thread for minutes (issue #71).
+struct InspectionSnapshot {
+  std::uint32_t id = 0;
+  std::string state = "queued", error;
+  Inspection inspection;
+  std::int64_t waited_ms = 0, took_ms = 0;
+};
+// Queues the inspection of the ordered volumes (real paths); 0 with `error` when the worker cannot start.
+std::uint32_t inspect_start(std::vector<std::string> sources, std::string& error);
+// Every inspection's state ("queued", "inspecting", "completed", "cancelled"); terminal ones are
+// reported once.
+std::vector<InspectionSnapshot> inspect_poll();
+// A queued inspection ends "cancelled"; one under way finishes and its result is dropped.
+void inspect_cancel(std::uint32_t id);
 }

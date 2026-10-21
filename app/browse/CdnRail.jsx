@@ -6,7 +6,7 @@ import cdnCard from '../assets/cdn-card.png';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { memo } from 'react';
 import { GameRail } from './GameRail.jsx';
-import { RowCard, useRowWindow } from './near.js';
+import { RowCard, useRowWindow, useSectionShown } from './near.js';
 import { games } from '../data/catalog.js';
 import { useT } from '../i18n/index.js';
 import { CDN_HOST, NO_FILTERS, onCdn, sortGames } from '../state/catalog.js';
@@ -47,6 +47,7 @@ import { Image, Text, View, motion, useIsFocused } from '@ps5-react/core';
     const { openGame, focusLater } = useNavActions();
     const { setFilters, setQuery } = useStoreActions();
     const row = useRowWindow();
+    useSectionShown(SERVED.length > 0);
     if (!SERVED.length) return null;
     const browse = () => {
       setFilters({ ...NO_FILTERS, provider: [CDN_HOST] });

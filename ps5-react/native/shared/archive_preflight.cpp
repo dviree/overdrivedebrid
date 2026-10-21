@@ -3,6 +3,7 @@
 // Additional attribution term: see LICENSE-ATTRIBUTION.
 #include "archive_preflight.hpp"
 #include "archives.hpp"
+#include "thread_name.hpp"
 #include <lzma.h>
 #include <algorithm>
 #include <array>
@@ -11,7 +12,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <condition_variable>
+#include <cstdio>
 #include <fcntl.h>
+#include <mutex>
+#include <pthread.h>
 #include <string_view>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -742,5 +747,110 @@ Inspection inspect(const std::vector<std::string>& sources) {
   if (starts_with(boot, "EXFAT   ")) return {"exfat", {}};
   if (little_endian(ufs.data(), 4) == 0x19540119) return {"ffpkg", {}};
   return {};
+}
+
+namespace {
+struct InspectionJob {
+  InspectionSnapshot snapshot;
+  std::vector<std::string> sources;
+  std::chrono::steady_clock::time_point queued;
+  bool running = false;
+};
+// Never freed: the worker is detached, as an inspection waiting on a busy drive must not hold the
+// title's exit, and it may still use these after static destructors run.
+struct Inspections {
+  std::mutex guard;
+  std::condition_variable wake;
+  std::vector<InspectionJob> jobs;
+  std::uint32_t next_id = 1;
+  bool started = false;
+};
+Inspections& inspections() {
+  static auto* state = new Inspections;
+  return *state;
+}
+bool terminal(const std::string& state) { return state == "completed" || state == "cancelled"; }
+std::int64_t ms_since(std::chrono::steady_clock::time_point from) {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - from).count();
+}
+void* inspect_worker(void*) {
+  name_thread("inspect");
+  auto& s = inspections();
+  std::unique_lock lock(s.guard);
+  for (;;) {
+    const auto queued = [&] { return std::find_if(s.jobs.begin(), s.jobs.end(), [](const InspectionJob& job) { return job.snapshot.state == "queued"; }); };
+    s.wake.wait(lock, [&] { return queued() != s.jobs.end(); });
+    const auto job = queued();
+    job->snapshot.state = "inspecting";
+    job->snapshot.waited_ms = ms_since(job->queued);
+    job->running = true;
+    const auto id = job->snapshot.id;
+    const auto sources = job->sources;
+    lock.unlock();
+    const auto started = std::chrono::steady_clock::now();
+    auto found = inspect(sources);
+    const auto took = ms_since(started);
+    lock.lock();
+    const auto done = std::find_if(s.jobs.begin(), s.jobs.end(), [id](const InspectionJob& item) { return item.snapshot.id == id; });
+    char line[256];
+    std::snprintf(line, sizeof line, "id=%u waited=%lldms took=%lldms kind=%s refusal=%s%s", id,
+                  static_cast<long long>(done == s.jobs.end() ? 0 : done->snapshot.waited_ms), static_cast<long long>(took),
+                  found.kind.empty() ? "none" : found.kind.c_str(), found.refusal.empty() ? "none" : found.refusal.c_str(),
+                  done == s.jobs.end() || done->snapshot.state == "cancelled" ? " (dropped)" : "");
+    trace("inspect done", line);
+    if (done == s.jobs.end()) continue;
+    done->running = false;
+    if (done->snapshot.state == "cancelled") continue;
+    done->snapshot.state = "completed";
+    done->snapshot.took_ms = took;
+    done->snapshot.inspection = std::move(found);
+  }
+  return nullptr;
+}
+}
+
+std::uint32_t inspect_start(std::vector<std::string> sources, std::string& error) {
+  auto& s = inspections();
+  std::lock_guard lock(s.guard);
+  if (!s.started) {
+    pthread_attr_t attributes;
+    pthread_t thread;
+    // The RAR and 7z header parsers want more than the console's small default stack.
+    s.started = !pthread_attr_init(&attributes) && !pthread_attr_setstacksize(&attributes, 1024 * 1024) &&
+                !pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED) && !pthread_create(&thread, &attributes, inspect_worker, nullptr);
+    pthread_attr_destroy(&attributes);
+    if (!s.started) {
+      error = "Cannot start the inspection thread.";
+      return 0;
+    }
+  }
+  auto& job = s.jobs.emplace_back();
+  job.snapshot.id = s.next_id++;
+  job.queued = std::chrono::steady_clock::now();
+  char line[160];
+  std::snprintf(line, sizeof line, "id=%u volumes=%zu ahead=%zu %s", job.snapshot.id, sources.size(), s.jobs.size() - 1,
+                sources.empty() ? "" : sources.front().c_str());
+  trace("inspect queued", line);
+  job.sources = std::move(sources);
+  s.wake.notify_one();
+  return job.snapshot.id;
+}
+
+std::vector<InspectionSnapshot> inspect_poll() {
+  auto& s = inspections();
+  std::lock_guard lock(s.guard);
+  std::vector<InspectionSnapshot> out;
+  for (const auto& job : s.jobs) out.push_back(job.snapshot);
+  // One cancelled while under way stays until the worker drops its result.
+  std::erase_if(s.jobs, [](const InspectionJob& job) { return terminal(job.snapshot.state) && !job.running; });
+  return out;
+}
+
+void inspect_cancel(std::uint32_t id) {
+  auto& s = inspections();
+  std::lock_guard lock(s.guard);
+  for (auto& job : s.jobs) {
+    if (job.snapshot.id == id && !terminal(job.snapshot.state)) job.snapshot.state = "cancelled";
+  }
 }
 }

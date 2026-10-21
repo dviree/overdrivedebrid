@@ -13,7 +13,7 @@ import { GameScreen } from './game/index.jsx';
 import { HomebrewGame, HomebrewScreen } from './homebrew/HomebrewScreen.jsx';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { SearchScreen } from './search/index.jsx';
-import { getGame, warmCovers } from './state/catalog.js';
+import { NO_FILTERS, getGame, warmCovers } from './state/catalog.js';
 import { isHomebrewId } from './state/homebrew.js';
 import { NavProvider, useIsImmersive, useNavActions, useNavState } from './state/nav.jsx';
 import { StoreFreeze, StoreProvider } from './state/store.jsx';
@@ -23,15 +23,19 @@ import { Splash } from './ui/Splash.jsx';
 import { UpdateDialog } from './ui/UpdateDialog.jsx';
 import { useInterfaceHaptics } from './ui/haptics.js';
 import { useInterfaceSounds } from './ui/sounds.js';
+import { useShowLibrary } from './ui/useSections.js';
 import { VERSION } from './version.js';
 
   function Screen({ screen: screen2 }) {
     const { openGame, pop } = useNavActions();
+    // "Browse games" on an empty Downloads opens the store front as Discover does, whatever section
+    // (Favorites, Top rated) the store was left on.
+    const showLibrary = useShowLibrary();
     const openCard = (game) => openGame(game.id, `card:${game.id}`);
     // A homebrew app's page reads its file from the catalog first, and says so when the app is gone.
     if (screen2.name === "game" && isHomebrewId(screen2.id)) return /* @__PURE__ */ (0, jsx)(HomebrewGame, { game: getGame(screen2.id), download: screen2.download, onBack: pop, onOpenGame: openCard });
     if (screen2.name === "game") return /* @__PURE__ */ (0, jsx)(GameScreen, { game: getGame(screen2.id), download: screen2.download, onBack: pop, onOpenGame: openCard });
-    if (screen2.name === "downloads") return /* @__PURE__ */ (0, jsx)(DownloadsScreen, { onBack: pop, onOpenGame: openGame });
+    if (screen2.name === "downloads") return /* @__PURE__ */ (0, jsx)(DownloadsScreen, { onBack: pop, onBrowse: () => showLibrary(NO_FILTERS, "newest", "spotlight:cta", "discover"), onOpenGame: openGame });
     if (screen2.name === "files") return /* @__PURE__ */ (0, jsx)(FilesScreen, { onBack: pop });
     return /* @__PURE__ */ (0, jsx)(SearchScreen, { onBack: pop, onOpenGame: openCard });
   }

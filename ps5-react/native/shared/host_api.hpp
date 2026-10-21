@@ -1,7 +1,7 @@
 // Copyright (C) 2026 half144 and PS5 React contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Additional attribution term: see LICENSE-ATTRIBUTION.
-// Native API contract (ABI v19) between the hosts and `@ps5-react/core`. The input actions hosts
+// Native API contract (ABI v20) between the hosts and `@ps5-react/core`. The input actions hosts
 // pass to `__ps5ReactDispatch` are a separate contract with its own version (runtime/js/input.js).
 //
 // host_api.cpp (shared) installs `globalThis.__ps5ReactNative` through
@@ -67,6 +67,10 @@
 //   archives.extract(sources, destination, maxBytes) task ID; bounded native archive worker
 //   archives.inspect(sources)      {kind, refusal, title}; file type from leading bytes and, for an archive,
 //                                  a decoder-memory refusal its headers so far justify; partial files ok
+//   archives.inspectAsync(sources) ABI v19; task ID; inspect on a worker thread, one at a time in order
+//   inspections.poll()             ABI v19; [{id, state, error, kind, refusal, title, waitedMs, tookMs}];
+//                                  consumes terminal results
+//   inspections.cancel(id)         ABI v19; a queued inspection is dropped, one under way finishes unseen
 //   archives.cancel(id)            requests cancellation; source volumes remain intact
 //   archives.poll()                state/error/written/entries/artifacts; consumes terminal results
 //   browser.capture(prefix, suffix, timeoutSeconds, rejected, resume) ABI v7; Vikingfile capture task bound to a filename, or to any file when suffix is "/"; rejected: up to six refused links
@@ -78,7 +82,7 @@
 //   lan.cancel(id)                 stops gathering; the replies so far are kept
 //   lan.poll()                     [{id, state, error, replies: [{address, port, body}]}] finished
 //                                  since the last poll; state 'completed' | 'failed' | 'cancelled'
-//   server.listen(port)            ABI v19; HTTP/1.1 on 0.0.0.0:port (1024..65535), up to 16 connections
+//   server.listen(port)            ABI v20; HTTP/1.1 on 0.0.0.0:port (1024..65535), up to 16 connections
 //                                  at once off-thread; headers 16 KiB, body 256 KiB; needs networking
 //   server.poll()                  [{id, method, path, address, contentType, body}] read since the last poll
 //   server.respond(id, status, contentType, body) true when sent; a request unanswered for 15 s gets 504
@@ -271,6 +275,7 @@ void ps5_react_stop_sound();
 
 // ABI v5 additive archive tasks: extract(sources, destination, maxBytes, password?), inspect(sources), cancel(id), poll().
 JSValue ps5_react_archive_api(JSContext* ctx);
+JSValue ps5_react_inspection_api(JSContext* ctx);
 // ABI v5 additive package installs: install(path, name), cancel(id), poll().
 JSValue ps5_react_package_api(JSContext* ctx);
 
@@ -278,7 +283,7 @@ JSValue ps5_react_package_api(JSContext* ctx);
 JSValue ps5_react_browser_capture_api(JSContext* ctx);
 // ABI v9: UDP broadcast queries on the local network (lan.hpp).
 JSValue ps5_react_lan_api(JSContext* ctx);
-// ABI v19: an HTTP server on the local network (local_server.hpp).
+// ABI v20: an HTTP server on the local network (local_server.hpp).
 JSValue ps5_react_local_server_api(JSContext* ctx);
 // ABI v10: video playback (video_api.hpp).
 JSValue ps5_react_video_api(JSContext* ctx);

@@ -19,7 +19,8 @@ import { FileSystem, Image } from '@ps5-react/core';
     "Role Playing Games": "RPG",
     "Role-playing": "RPG",
     Simulator: "Simulation",
-    "Driving/Racing": "Racing"
+    "Driving/Racing": "Racing",
+    Sports: "Sport"
   };
   var dataFile = (dir2, id) => `data/${dir2}/${encodeURIComponent(id)}.json`;
   var pageOf = (game) => {
@@ -52,13 +53,15 @@ import { FileSystem, Image } from '@ps5-react/core';
   };
   // A game whose every host is paused (paused-hosts.js) leaves the shared lists in place, so no screen
   // shows a game with nothing to download. So does one with no source at all (2026-10-17: 563 games,
-  // nearly all PS4, whose only links sit in Archive.org collections now restricted), unless another
-  // edition of it can be downloaded, which its Download button then offers; an edition with no source
-  // is never offered. The data stays: a game that gains a source shows again. The lists are the data
-  // module's own arrays, which every screen reads after this module has run.
+  // nearly all PS4, whose only links sit in Archive.org collections now restricted). Either stays when
+  // another edition of it can be downloaded, which its Download button then offers (2026-10-21: the
+  // PS5 editions the importers add as twins, of PS4 games such as Don't Starve Together, whose only
+  // host is MediaFire); an edition with no source is never offered. The data stays: a game that gains
+  // a source shows again. The lists are the data module's own arrays, which every screen reads after
+  // this module has run.
   var playable = (game) => game.providers?.length > 0 && !game.providers.every(pausedFilter);
   var playableWorks = new Set([...games, ...twins].filter((game) => playable(game) && game.work != null).map((game) => game.work));
-  var hidden = (game, listed2) => game.providers?.length ? !playable(game) : !listed2 || !playableWorks.has(game.work);
+  var hidden = (game, listed2) => !playable(game) && (!listed2 || !playableWorks.has(game.work));
   for (const list of [games, twins])
     for (let index = list.length - 1; index >= 0; index--)
       if (hidden(list[index], list === games)) list.splice(index, 1);
@@ -74,6 +77,10 @@ import { FileSystem, Image } from '@ps5-react/core';
   for (const game of entries) if (game.work) editionsByWork.set(game.work, [...editionsByWork.get(game.work) ?? [], game]);
   var listed = new Set(games);
   for (const game of entries) game.platforms = [...new Set(editionsOf(game).map((edition2) => edition2.platform))].sort();
+  // When a game reached Overdrive ("added", which the importers write from 2026-10-21 on): its own date
+  // or its newest edition's, so a PS5 edition added to a PS4 game brings the game back among the new.
+  var addedOn = new Map(entries.map((game) => [game, editionsOf(game).reduce((last, edition2) => (edition2.added ?? "") > last ? edition2.added : last, "")]));
+  var addedAt = (game) => addedOn.get(game) ?? "";
   function editionsOf(game) {
     return [...editionsByWork.get(game.work) ?? [game]].sort((a, b) => b.platform.localeCompare(a.platform) || Number(listed.has(b)) - Number(listed.has(a)) || a.titleId.localeCompare(b.titleId));
   }
@@ -96,6 +103,8 @@ import { FileSystem, Image } from '@ps5-react/core';
   var SORTS = [
     // New releases first: the library's sort menu opens on it.
     { id: "newest", compare: (a, b) => b.releaseDate.localeCompare(a.releaseDate) },
+    // Recently added, the "Recently added" row's library: the games added the same day, newest release first.
+    { id: "added", compare: (a, b) => addedAt(b).localeCompare(addedAt(a)) || b.releaseDate.localeCompare(a.releaseDate) },
     // Most popular puts the games Archive.org serves first: the app downloads them fastest.
     { id: "relevance", compare: (a, b) => fromArchive(b) - fromArchive(a) || b.recommendations - a.recommendations },
     { id: "rating", compare: (a, b) => (b.metacritic ?? 0) - (a.metacritic ?? 0) },
@@ -226,4 +235,4 @@ import { FileSystem, Image } from '@ps5-react/core';
     return formatNumber2(n);
   }
 
-export { CDN_HOST, FACETS, NO_FILTERS, SORTS, activeCount, editionsOf, facetCounts, facetLabel, facetTitle, featureLabel, filterGames, formatCount, formatDate3, fromArchive, genreLabel, genres, getGame, listedId, onCdn, optionLabel, relatedGames, showcase, sortGames, sortLabel, summaryOf, toggleValue, warmCovers };
+export { CDN_HOST, FACETS, NO_FILTERS, SORTS, activeCount, addedAt, editionsOf, facetCounts, facetLabel, facetTitle, featureLabel, filterGames, formatCount, formatDate3, fromArchive, genreLabel, genres, getGame, listedId, onCdn, optionLabel, relatedGames, showcase, sortGames, sortLabel, summaryOf, toggleValue, warmCovers };

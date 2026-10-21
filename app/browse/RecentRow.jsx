@@ -4,7 +4,7 @@
 import { jsx } from 'react/jsx-runtime';
 import { memo, useRef } from 'react';
 import { GameRail } from './GameRail.jsx';
-import { RowCard, useRowWindow } from './near.js';
+import { RowCard, useRowWindow, useSectionShown } from './near.js';
 import { useT } from '../i18n/index.js';
 import { getGame, listedId } from '../state/catalog.js';
 import { useNavActions, useNavState } from '../state/nav.jsx';
@@ -22,6 +22,7 @@ import { GameCard } from '../ui/GameCard.jsx';
     const { openGame } = useNavActions();
     const row = useRowWindow();
     const games2 = [...new Set(kept.current.map(listedId))].map(getGame).filter(Boolean);
+    useSectionShown(games2.length > 0);
     if (!games2.length) return null;
     return /* @__PURE__ */ (0, jsx)(GameRail, { title: t2("browse.recentlyViewed"), children: games2.map((game, index) => {
       const key = `recent:${game.id}`;

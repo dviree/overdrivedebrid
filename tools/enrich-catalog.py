@@ -9,7 +9,7 @@ were not in it at that ref (after an import, before committing it: --since HEAD)
 The games already in the catalog are left alone. For each it fills only what is missing, never
 replacing what the catalog already has:
 
-  catalog.js   genres, art.cover, art.hero, releaseDate (+ year), publisher, developer
+  catalog.js   genres, art.cover, art.hero, art.tint, releaseDate (+ year), publisher, developer
   pages/<id>   about (description paragraphs), summary, shots (screenshot + thumbnail)
 
 Sources, in order:
@@ -22,6 +22,9 @@ Sources, in order:
   2. IGDB, by name on PS4/PS5, only for what the store did not give, and only when the name matches
      and the release year agrees. It needs a Twitch app: IGDB_CLIENT_ID and IGDB_CLIENT_SECRET from
      the environment or from --env-file (never written anywhere). Without them, IGDB is skipped.
+
+art.tint, the colour behind the game's page, is the cover's average colour, as the catalog's own
+tints are (within a few levels of 255 on 26 of 30 checked): it needs Pillow, and is skipped without it.
 
 Without --write nothing is written: it prints and saves (--report) what it would change. Answers are
 cached in --cache (default ../.enrich-cache, outside the repository) so a second run asks again
@@ -40,6 +43,11 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "app" / "data"
@@ -182,6 +190,25 @@ def resized(url, width):
     """image.api.playstation.com's resized JPEG for a store image (vulcan.dl.playstation.net/...)."""
     match = re.match(r"https?://(?:vulcan\.dl\.playstation\.net|image\.api\.playstation\.com/vulcan)/(ap/rnd/[^?#]+)", url or "")
     return f"https://image.api.playstation.com/vulcan/{match.group(1)}?w={width}&thumb=false" if match else None
+
+
+def tint_of(cache, cover):
+    """The cover's average colour as "#rrggbb", or None when it cannot be read."""
+    cached = cache.get("tints", cover)
+    if cached is not None:
+        return cached or None
+    small = re.sub(r"([?&]w=)\d+", r"\g<1>128", cover) if "image.api.playstation.com" in cover else cover
+    body = fetch(small, timeout=30)
+    tint = ""
+    try:
+        import io
+        pixels = list(Image.open(io.BytesIO(body)).convert("RGB").resize((32, 32)).getdata()) if body else []
+        if pixels:
+            tint = "#" + "".join("%02x" % round(sum(p[i] for p in pixels) / len(pixels)) for i in range(3))
+    except (OSError, ValueError):
+        pass
+    cache.put("tints", cover, tint)
+    return tint or None
 
 
 def paragraphs(markup):
@@ -351,6 +378,7 @@ def lacking(game, page):
         "genres": not game.get("genres"),
         "cover": not (game.get("art") or {}).get("cover"),
         "hero": not (game.get("art") or {}).get("hero"),
+        "tint": Image is not None and not (game.get("art") or {}).get("tint"),
         "releaseDate": not game.get("releaseDate"),
         "publisher": not game.get("publisher"),
         "developer": not game.get("developer"),
@@ -385,6 +413,14 @@ def edit_line(line, game, fill):
         if "hero" in fill:
             body = f'{body}, "hero": {js(fill["hero"])}' if body else f'"hero": {js(fill["hero"])}'
         line = line[: art.start()] + f'"art": {{ {body} }}' + line[art.end():]
+    art = re.search(r'"art": \{([^{}]*)\}', line)
+    if art and "tint" in fill:
+        # Before the hero, as the catalog's own lines have it.
+        body = art.group(1).strip()
+        entry = f'"tint": {js(fill["tint"])}'
+        hero = body.find('"hero":')
+        body = (body[:hero] + entry + ", " + body[hero:]) if hero >= 0 else (f"{body}, {entry}" if body else entry)
+        line = line[: art.start()] + f'"art": {{ {body} }}' + line[art.end():]
     return line
 
 
@@ -408,6 +444,8 @@ def main(argv=None):
     cache = Cache(args.cache)
     igdb = Igdb(env["IGDB_CLIENT_ID"], env["IGDB_CLIENT_SECRET"], cache) if env.get("IGDB_CLIENT_ID") and env.get("IGDB_CLIENT_SECRET") else None
     print("IGDB fallback:", "on" if igdb else "off (no IGDB_CLIENT_ID / IGDB_CLIENT_SECRET)")
+    if Image is None:
+        print("tint: off (no Pillow: pip install pillow)")
 
     catalog_path = DATA / "catalog.js"
     lines = catalog_path.read_bytes().decode("utf-8").split("\n")
@@ -455,13 +493,18 @@ def main(argv=None):
             if hit:
                 results.append(hit)
         fill, sources = {}, {}
-        for key in need:
+        for key in need - {"tint"}:
             for result in results:
                 value = result.get(key)
                 if value:
                     fill[key] = value
                     sources[key] = result["source"]
                     break
+        cover = fill.get("cover") or (game.get("art") or {}).get("cover")
+        if "tint" in need and cover:
+            tint = tint_of(cache, cover)
+            if tint:
+                fill["tint"], sources["tint"] = tint, "cover"
         return fill, sources
 
     changes = []
@@ -491,7 +534,7 @@ def main(argv=None):
                                                  ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     untouched = len(targets) - len(changes)
     print(f"\ngames with something added: {len(changes)} | nothing found: {untouched}")
-    for key in ("genres", "cover", "hero", "about", "summary", "shots", "releaseDate", "publisher", "developer"):
+    for key in ("genres", "cover", "hero", "tint", "about", "summary", "shots", "releaseDate", "publisher", "developer"):
         print(f"  {key:12} {tally.get(key, 0)}")
     if args.report:
         pathlib.Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")

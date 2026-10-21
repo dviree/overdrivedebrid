@@ -188,7 +188,7 @@ check a reply against its sender before using an address it names. It needs
 `networking: true` (and on PS5 `filesystemAccess: "console"`), like HTTP. Only IPv4
 limited broadcast is sent; multicast (SSDP, mDNS) and unicast UDP are not available.
 
-## LocalServer (ABI v19)
+## LocalServer (ABI v20)
 
 `LocalServer.listen({port, handler})` serves HTTP/1.1 on `0.0.0.0:port` (1024–65535), so a
 computer's browser can reach the app at `http://<LocalServer.address()>:<port>/`. `handler(request)`
@@ -640,6 +640,15 @@ error, so a first volume can be refused before the remaining volumes download.
 7z and ZIP keep their directories at the end and show no refusal until complete.
 An empty kind is not proof of anything; image kinds are recognized by superblock
 magic only, not validated as mountable.
+
+`Archives.inspectAsync(sources)` (ABI v19) does the same on a native worker
+thread and resolves with `{kind, refusal, title, waitedMs, tookMs}`; inspections
+run one at a time in the order asked, `waitedMs` behind the earlier ones. Use it
+while the file is being written: a read of a download's growing file waits
+behind the writes while they keep the drive at its write rate, and on the
+console one waited until the download ended (minutes on the render thread with
+`inspect`). Each inspection logs `archive inspect queued` and `archive inspect
+done` with both times. On a host without it, it falls back to `inspect`.
 
 
 ## Browser download capture (ABI v7)
