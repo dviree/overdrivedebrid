@@ -2,7 +2,7 @@
 // reconstructed from the esbuild bundle in eboot.bin
 
 import { jsx, jsxs } from 'react/jsx-runtime';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Path, Svg, motion } from '@ps5-react/core';
 import { colors } from './colors.js';
 import { px } from './scale.js';
@@ -19,9 +19,18 @@ import { px } from './scale.js';
   ];
   // `onDone` reports the end of the intro so the store can mount behind it: nothing of the
   // store is rendered or loaded while the needle swings.
+  // The store's first render takes about 300 ms on the console. Started in the same update that
+  // removes the faded logo, it held the fade's last frame on screen all that time; so the black
+  // screen is shown first, and the store starts a few frames later.
+  var MOUNT_AFTER_MS = 50;
   function Splash({ onDone }) {
     const [step, setStep] = (0, useState)(0);
     const [done, setDone] = (0, useState)(false);
+    (0, useEffect)(() => {
+      if (!done || !onDone) return;
+      const id = setTimeout(onDone, MOUNT_AFTER_MS);
+      return () => clearTimeout(id);
+    }, [done]);
     if (done) return null;
     const leaving = step === STEPS.length;
     return /* @__PURE__ */ (0, jsx)(
@@ -34,7 +43,6 @@ import { px } from './scale.js';
         onAnimationComplete: () => {
           if (!leaving) return;
           setDone(true);
-          if (onDone) onDone();
         },
         children: /* @__PURE__ */ (0, jsxs)(
           motion.View,

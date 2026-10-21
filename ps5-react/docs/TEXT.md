@@ -51,18 +51,19 @@ A codepoint the baked font lacks draws as `?`, unless a runtime font has it.
 List the scripts an app shows in `app.json`:
 
 ```json
-"textFonts": ["chinese", "japanese", "devanagari", "bengali", "arabic"]
+"textFonts": ["chinese", "chinese-traditional", "japanese", "devanagari", "bengali", "arabic"]
 ```
 
 | Script | Languages | Font (subset) | Characters | Package |
 | --- | --- | --- | --- | --- |
 | `chinese` | Chinese (Simplified) | Noto Sans SC | GB 2312: 6,763 hanzi, CJK punctuation, full-width forms | 1.6 MB |
+| `chinese-traditional` | Chinese (Traditional) | Noto Sans TC | Big5 level 1: 5,401 hanzi and its symbols, CJK punctuation, full-width forms | about 1.4 MB (not measured) |
 | `japanese` | Japanese | Noto Sans JP | JIS X 0208: kana, 6,355 kanji (levels 1 and 2), punctuation | 1.7 MB |
 | `devanagari` | Hindi, Marathi, Nepali | Noto Sans Devanagari | Devanagari, Devanagari Extended, Vedic Extensions | 0.16 MB |
 | `bengali` | Bengali, Assamese | Noto Sans Bengali | Bengali | 0.09 MB |
 | `arabic` | Arabic, Urdu, Persian | Noto Sans Arabic | Arabic, Supplement, Extended-A, presentation forms | 0.11 MB |
 
-All five add 3.7 MB to the package. Urdu is drawn in Noto Sans Arabic's Naskh
+The five scripts other than `chinese-traditional` add 3.7 MB to the package. Urdu is drawn in Noto Sans Arabic's Naskh
 style, not Nastaliq.
 
 The build pins each font in `dependencies.lock.json`, subsets it with HarfBuzz
@@ -72,8 +73,10 @@ preview reads the same files from `.build/<app>/generated/fonts/`. Han
 characters outside one font fall back to the other when both are listed, so a
 Japanese UI that lists both also draws kanji beyond JIS X 0208.
 
-Kana always uses the Japanese font. Han characters shared by both use the
-Chinese forms unless the language is Japanese: the shaper starts with the
+Kana always uses the Japanese font. Han characters use the simplified Chinese
+forms, then traditional, then Japanese; the traditional forms come first when the
+language is traditional Chinese (`zh-Hant`, or `zh` with region TW, HK or MO), and
+the Japanese ones when it is Japanese: the shaper starts with the
 system language (`DeviceInfo.get().language`) and `Fonts.setLanguage(tag)`
 overrides it (see [Native API](NATIVE-API.md)).
 

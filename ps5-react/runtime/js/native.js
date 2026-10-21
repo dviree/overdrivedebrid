@@ -513,6 +513,16 @@ export const Archives = Object.freeze({
    * Also works on a download's growing `.part` file.
    * @param {string[]} sources ordered volumes @returns {{kind: string, refusal: string}} */
   inspect: sources => host().archives.inspect(sources),
+  /** `inspect` on a native worker thread, one at a time in the order asked: a download's growing file
+   * can make the read wait for the drive while it is written, which would hold the render thread.
+   * Resolves with `{kind, refusal, title, waitedMs, tookMs}` (waitedMs: behind the ones asked before it).
+   * Falls back to `inspect` on a host without it (ABI < 19).
+   * @param {string[]} sources ordered volumes */
+  async inspectAsync(sources) {
+    if (typeof host().archives.inspectAsync !== 'function') return {...host().archives.inspect(sources), waitedMs: 0, tookMs: 0};
+    const {kind, refusal, title, waitedMs, tookMs} = await networkTask(host().archives.inspectAsync(sources), 'Archives.inspectAsync', '', 'inspections').done;
+    return {kind, refusal, title, waitedMs, tookMs};
+  },
   /** Whether `extract` takes `stream`. */
   streams: true,
 });
@@ -580,7 +590,7 @@ function pollServer() {
 }
 
 /**
- * An HTTP server on the local network (ABI v19), so a computer's browser can reach the app at
+ * An HTTP server on the local network (ABI v20), so a computer's browser can reach the app at
  * `http://<address()>:<port>/`. One server at a time; `handler(request)` gets
  * `{method, path, address, contentType, body}` and returns (or resolves to)
  * `{status?, type?, body?}`. A request it leaves unanswered for 15 s gets a 504. Anyone on the
