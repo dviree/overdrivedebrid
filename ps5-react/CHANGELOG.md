@@ -30,6 +30,10 @@
   until the download ended (122 s and 341 s in a tester's log, issue #71), and a probe writing that way
   reproduced it (18 s at 115 MiB/s, a few ms at 100 MiB/s).
 - Each async inspection logs when it is queued and when it is done, with the time it waited and took.
+- overdrive treats optional header inspection failure as unknown result. (the download
+  finishes are still downloaded. multi-part archives will resort to
+  extract-on-all-volumes-complete). header outright refusal will still fail the
+  archive. archive contents will still be validated for extraction preflight.
 
 ## Unreleased — image registry headroom
 

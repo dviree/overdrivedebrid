@@ -14,6 +14,7 @@ import { HomebrewGame, HomebrewScreen } from './homebrew/HomebrewScreen.jsx';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { SearchScreen } from './search/index.jsx';
 import { NO_FILTERS, getGame, warmCovers } from './state/catalog.js';
+import { fetchUpdate } from './state/catalog-update.js';
 import { isHomebrewId } from './state/homebrew.js';
 import { NavProvider, useIsImmersive, useNavActions, useNavState } from './state/nav.jsx';
 import { StoreFreeze, StoreProvider } from './state/store.jsx';
@@ -52,12 +53,18 @@ import { VERSION } from './version.js';
     return /* @__PURE__ */ (0, jsx)(View, { style: shown ? { position: "absolute", left: 0, right: 0, top: 96, bottom: 60 } : { position: "absolute", left: 0, right: 0, top: 96, bottom: 60, display: "none" }, children: /* @__PURE__ */ (0, jsx)(ReleaseImages, { when: !shown, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "homebrew-page", inert: !shown, children: /* @__PURE__ */ (0, jsx)(HomebrewScreen, { onBack: pop }) }) }) });
   }
   var WARM_DELAY_MS = 3e3;
+  // The nightly catalog update for the next launch, once the covers' warm-up has had the network.
+  var UPDATE_DELAY_MS = 2e4;
   function App() {
     useInterfaceSounds();
     useInterfaceHaptics();
     (0, useEffect)(() => {
       const id = setTimeout(warmCovers, WARM_DELAY_MS);
-      return () => clearTimeout(id);
+      const update = setTimeout(fetchUpdate, UPDATE_DELAY_MS);
+      return () => {
+        clearTimeout(id);
+        clearTimeout(update);
+      };
     }, []);
     const { stack, top } = useNavState();
     const onBrowse = top.name === "browse";

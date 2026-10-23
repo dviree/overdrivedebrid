@@ -219,11 +219,14 @@ def record_for(slug, game_id, package, name, url):
     version = (package.get("version") or "").strip()
     release_id = "r" + hashlib.sha256(("%s|%s" % (game_id, url)).encode("utf-8")).hexdigest()[:12]
     provider, flow, _ = spec_of(url)
-    extension = re.search(r"\.(rar|7z|zip|pkg)$", host_of(url)[1], re.I)
+    # The filename's extension must be the declared format's (ps5-react download-formats.js refuses
+    # "x.7z" declared "binary"): a .pkg or .rar is declared so, anything else is "binary" with a
+    # .binary name, which the app tells apart by its content, as the catalog's own pegasus-1 records.
+    extension = re.search(r"\.(rar|pkg)$", host_of(url)[1], re.I)
     kind = extension.group(1).lower() if extension else "binary"
     return {
         "id": release_id,
-        "format": "pkg" if kind == "pkg" else "rar" if kind == "rar" else "binary",
+        "format": kind,
         "filename": "%s-game-%s-%s.%s" % (title_id, version or "unknown", release_id, kind),
         "url": url,
         "browserUrl": url,
