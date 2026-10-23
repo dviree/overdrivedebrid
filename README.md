@@ -200,6 +200,22 @@ Overdrive is free and open source. If you enjoy it, sponsoring helps me keep it 
 </details>
 
 <details>
+<summary><b>Overdrive opens but the page doesn't load</b></summary>
+<br>
+
+The copy of `Overdrive.exfat` on the console is damaged. This usually happens when it is copied
+through a USB drive. Deleting the app's folders doesn't help: Overdrive creates them again at
+every start.
+
+1. Delete `Overdrive.exfat` from the `homebrew` folder, then its icon from the home screen.
+2. Download `Overdrive.exfat` again from the
+   [latest release](https://github.com/MyLuxy/overdrive/releases/latest).
+3. Copy it to the console with [PS5Upload](https://github.com/phantomptr/ps5upload) instead of a
+   USB drive, and check that its size on the console matches the downloaded file's.
+
+</details>
+
+<details>
 <summary><b>After an update, the app still shows the old version</b></summary>
 <br>
 
@@ -248,6 +264,7 @@ screen. In the other order ShadowMount+ finds the file again and puts the icon b
 | `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title id `PPSA99058`, version, capabilities) |
 | `ps5-react/` | The framework it runs on, vendored from [half144/ps5-react](https://github.com/half144/ps5-react) |
 | `packaging/make-exfat.sh` | Builds the exFAT image ShadowMount+ installs |
+| `packaging/make-exfat-mac.sh` | The same image, built locally on macOS without `update.zip` |
 | `.github/workflows/build.yml` | The build |
 
 </details>
@@ -274,8 +291,9 @@ What a bundler throws away could not come back: most comments, the JSX syntax (i
 
 Everything runs from the repository root through npm. Once after cloning, `npm run setup`
 (`packaging/setup.sh`) installs every dependency: on Linux the apt packages for the desktop preview,
-the PS5 build and the tests (it asks for `sudo` once), on macOS the Homebrew formulae; then Pillow
-and the framework's npm packages. Read the script first if you'd rather install them yourself.
+the PS5 build and the tests (it asks for `sudo` once); on macOS the Homebrew formulae, a
+`ps5-react/.venv` with Pillow (Homebrew's `python3` refuses a global `pip install`) and the
+framework's npm packages. Read the script first if you'd rather install them yourself.
 
 ```sh
 git clone https://github.com/MyLuxy/overdrive.git
@@ -315,6 +333,42 @@ upstream ps5-react supports macOS only.
 </details>
 
 <details>
+<summary><b>Developing on macOS</b></summary>
+<br>
+
+The preview and the PS5 build run on a Mac with Xcode's command line tools, Homebrew, Node 18 or
+newer and Python 3.9 or newer. `npm run setup` installs the Homebrew formulae (CMake, LLVM 18,
+SDL2, ninja, nasm, libarchive, xz, OpenSSL), creates `ps5-react/.venv` with Pillow, and installs the
+framework's npm packages. Homebrew's `python3` is externally managed, so Pillow goes in the venv
+rather than a global `pip install`.
+
+```sh
+xcode-select --install     # once, if you have never built anything on this Mac
+npm run setup              # Homebrew formulae, ps5-react/.venv, framework npm packages
+npm run preview:mac        # the desktop preview
+```
+
+The `:mac` commands leave `preview`, `dev`, `test` and `build` untouched: those remain the ones
+Linux and the other developers use. `preview:mac` and `dev:mac` run through `ps5-react/.venv`, put
+LLVM 18 and Node on `PATH`, and prefer MacPorts at `/opt/local` with an SDL2 built in
+`~/.local/overdrive-sdl2` when they exist. In that case `/usr/local/bin` is left out of `PATH`, so
+CMake does not mix Homebrew's OpenSSL/CURL with the MacPorts copies and break the link.
+
+| Command | What it does |
+| --- | --- |
+| `npm run setup:mac` | Creates `ps5-react/.venv` with Pillow when the native libraries are already installed |
+| `npm run preview:mac` | Opens the desktop preview once |
+| `npm run dev:mac` | Opens it and rebuilds on every save under `app/` |
+| `npm run doctor:mac` | Checks the venv, Pillow, LLVM 18, Node, CMake and clang |
+
+If the preview does not start: `npm run doctor:mac` first; `brew install llvm@18` when LLVM is
+missing; `brew install sdl2` or `CMAKE_PREFIX_PATH=$HOME/.local/overdrive-sdl2` when SDL2 is
+missing; and keep Homebrew's `/usr/local/bin` out of `PATH` when a link error mentions OpenSSL or
+CURL and MacPorts supplies CMake.
+
+</details>
+
+<details>
 <summary><b>Building</b></summary>
 <br>
 
@@ -335,6 +389,23 @@ npm run build:app    # the app only, in ps5-react/dist/PPSA99058
 downloads its pinned dependencies into `ps5-react/.deps` and writes the app folder, a `.zip` and a
 `.receipt.json` into `ps5-react/dist`. It verifies the result itself (`tools/verify.py`), so a
 green build means the payload structure and signatures check out.
+
+On macOS, `npm run build:mac` does the same app build through `ps5-react/.venv` (Pillow for
+`verify.py`) and LLVM 18, without `sudo` and without packaging. The image is a separate,
+local-only step: `packaging/make-exfat-mac.sh` uses macOS's `newfs_exfat` and `hdiutil`, writes
+`Overdrive.exfat` alone and **no `update.zip`**. The CI keeps using `packaging/make-exfat.sh` on
+Ubuntu and still produces both files.
+
+```sh
+npm run build:mac      # the PS5 app only, in ps5-react/dist/PPSA99058
+npm run package:mac    # Overdrive.exfat from the app already built
+npm run image:mac      # both, in one go
+```
+
+`npm run package:mac` overwrites `Overdrive.exfat` in the repository root, so keep a copy of the
+image you had before. It checks the filesystem with `fsck_exfat` and that every file of the app is
+in the image; `fsck_exfat -n Overdrive.exfat` checks it again afterwards. The image keeps the same
+64 KiB clusters and `OVERDRIVE` label as the Linux one.
 
 The image is a plain exFAT volume whose root is the app folder, with 64 KiB clusters and the
 label `OVERDRIVE`. To release a new version, raise the version in `app/version.js` and

@@ -31,7 +31,7 @@ GENRES = {
     "indie": "Indie",
     "music": "Music/Rhythm",
     "party": "Party",
-    "brain": "Brain Training",
+    "brain": "Educational",
 }
 
 SPRITES = {

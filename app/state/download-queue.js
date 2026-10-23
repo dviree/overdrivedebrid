@@ -13,6 +13,7 @@ import { archivePassword } from './archive-password.js';
 import { BrowserRequired, archiveRefusal, cancellation, createSourceResolver, sourceKind, webURL } from './download-sources.js';
 import { LINK_PREFIX, captureAnchor, linkForLog, otherSourceLink, validateCapturedLink } from './browser-links.js';
 import { readJSON } from './read-json.js';
+import { finishedHeaders, inspectHeaders, optionalHeaders } from './archive-headers.js';
 import { mountedImages, shadowRequest, within2 } from './shadowmount.js';
 import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
 import { deletesPackages } from './package-cleanup.js';
@@ -468,7 +469,8 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           emit2();
         });
         await task.done;
-        if (job2.artifact.nextAction === "downloaded") route(job2, archives?.inspect && await headers([job2.downloadDestination], "downloaded"));
+        // A "binary" source is what its headers say it is: those it must have (finishedHeaders).
+        if (job2.artifact.nextAction === "downloaded") route(job2, archives?.inspect && await (job2.release.format === "binary" ? finishedHeaders : optionalHeaders)(archives, [job2.downloadDestination], "downloaded"));
         job2.state = job2.artifact.nextAction === "shadowmount" ? "downloaded" : job2.artifact.nextAction === "downloaded" ? "file-downloaded" : job2.artifact.nextAction;
         job2.written = job2.total || job2.written;
         job2.bytesPerSecond = 0;
@@ -530,27 +532,16 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         pump(restarted ? job2 : void 0);
       }
     }
-    // Headers are read on a native worker thread (issue #71): a download's growing file can make the
-    // read wait for the drive until the download ends, and on the render thread that froze the app.
-    async function headers(sources, why) {
-      const started = Date.now();
-      let found;
-      try {
-        found = archives.inspectAsync ? await archives.inspectAsync(sources) : archives.inspect(sources);
-      } catch (error2) {
-        console.log(`[download-queue] header check (${why}) off the render thread failed, reading it here: ${error2.message}`);
-        found = archives.inspect(sources);
-      }
-      console.log(`[download-queue] header check (${why}): ${found.kind || "no known format"}${found.refusal ? `, refused: ${found.refusal}` : ""} in ${Date.now() - started} ms (waited ${found.waitedMs ?? 0} ms, read ${found.tookMs ?? 0} ms)`);
-      return found;
-    }
+    // archive headers can take minutes with disk writes -- never synchronously inspect
+    // them during download even if the native worker is failing, or if host doesn't support ABI v19
+    const headers = (sources, why) => inspectHeaders(archives, sources, why);
     const inspections = /* @__PURE__ */ new WeakMap();
     const checking = /* @__PURE__ */ new WeakSet();
     // While the file downloads, so a refused archive stops early; the download goes on meanwhile. A
     // result that comes once the transfer has ended is left to the check after it.
     function checkHeaders(job2, path, task) {
       const tries = inspections.get(job2) || 0;
-      if (job2.inspected || checking.has(job2) || tries >= 3 || !archives?.inspect || !fs.exists(path)) return;
+      if (job2.inspected || checking.has(job2) || tries >= 3 || !archives?.inspectAsync || archives.supportsAsyncInspection === false || !fs.exists(path)) return;
       inspections.set(job2, tries + 1);
       checking.add(job2);
       headers([path], "while downloading").then(({ kind, refusal, title }) => {
@@ -913,7 +904,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
     }
     async function streamSet(job2) {
       const first = job2.parts[0].destination;
-      if (!archives?.streams || job2.parts.length < 2 || (await headers([first], "streamed set")).kind !== "rar") return null;
+      if (!archives?.streams || job2.parts.length < 2 || (await optionalHeaders(archives, [first], "streamed set"))?.kind !== "rar") return null;
       let task;
       try {
         const options = extraction(job2, job2.parts.map((part) => part.destination));
@@ -1053,7 +1044,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           job2.written = job2.parts.reduce((sum, item) => sum + item.written, 0);
           part.completed = true;
           change();
-          const refusal = index === 0 && archives?.inspect && (await headers([part.destination], "first part")).refusal;
+          const refusal = index === 0 && archives?.inspect && (await optionalHeaders(archives, [part.destination], "first part"))?.refusal;
           if (refusal) throw new Error(refusal);
         }
       } finally {
@@ -1089,13 +1080,23 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       active2 = { job: job2, task: null };
       void execute(job2);
     }
+    // A drive is the id in its downloads/.drive-id, written the first time a download uses it: the
+    // root's device:inode changes with every boot on a USB drive (issue #94), the file stays.
     function storageIdentity(job2) {
       const info = fs.stat(job2.root);
       if (!info?.isDirectory) throw new Error("Storage disconnected. Reconnect the selected drive.");
-      if (typeof info.device !== "string" || typeof info.inode !== "string") throw new Error("Storage identity is unavailable. Update the runtime.");
-      const identity = `${info.device}:${info.inode}`;
+      const file = `${job2.root}/downloads/.drive-id`;
+      let identity = fs.exists(file) ? String(fs.readFile(file)).trim() : "";
+      const named = job2.rootIdentity?.startsWith("drive:");
+      if (!identity) {
+        if (named && job2.root !== "/data") throw new Error("Storage changed. Reconnect the original drive.");
+        identity = `drive:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+        fs.mkdir(`${job2.root}/downloads`, { recursive: true });
+        fs.writeFile(file, identity, { sync: true });
+      }
       if (job2.rootIdentity && job2.rootIdentity !== identity) {
-        if (job2.root !== "/data") throw new Error("Storage changed. Reconnect the original drive.");
+        // A task from before the id file holds device:inode instead; its partial files still on this drive vouch for it.
+        if (job2.root !== "/data" && (named || lostPartial(job2))) throw new Error("Storage changed. Reconnect the original drive.");
         job2.rootIdentity = identity;
       }
       return identity;

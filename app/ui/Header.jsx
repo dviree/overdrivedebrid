@@ -4,9 +4,9 @@
 
 import '../assets/Inter-Regular.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { focusEnd, useLocale, useT } from '../i18n/index.js';
-import { NO_FILTERS, activeCount, genreLabel, genres, getGame } from '../state/catalog.js';
+import { getGame } from '../state/catalog.js';
 import { useIsImmersive, useNavActions, useNavState } from '../state/nav.jsx';
 import { useWishlist } from '../state/store.jsx';
 import { ButtonGlyph } from './ButtonHints.jsx';
@@ -15,7 +15,6 @@ import { DownloadsBadge } from './DownloadsBadge.jsx';
 import { FocusRing } from './FocusRing.jsx';
 import { LanguageSheet } from './LanguageSheet.jsx';
 import { Logo } from './Logo.jsx';
-import { Menu, MenuDivider, MenuItem } from './Menu.jsx';
 import { NavItem } from './NavItem.jsx';
 import { NavPill, useNavLayouts } from './NavPill.jsx';
 import { useSections } from './useSections.js';
@@ -26,24 +25,14 @@ import { FocusScope, Text, View } from '@ps5-react/core';
   function Header({ children }) {
     const t2 = useT();
     const { rtl } = useLocale();
-    const { section, shown, filters, on, step, keyOf, browseFocus, leaveBrowse } = useSections();
+    const { section, shown, on, step, keyOf } = useSections();
     const wishlist = useWishlist();
     const favorites = wishlist.filter((id) => getGame(id)).length;
     const nav = useNavActions();
     const { top } = useNavState();
-    const [browsing, setBrowsing] = (0, useState)(false);
-    const browsingNow = (0, useRef)(false);
-    browsingNow.current = browsing;
-    // A closed menu returns focus a frame later: only then can it tell whether focus left Browse.
-    (0, useEffect)(() => {
-      if (browsing) return void 0;
-      const id = setTimeout(leaveBrowse, 50);
-      return () => clearTimeout(id);
-    }, [browsing]);
     const [choosingLanguage, setChoosingLanguage] = (0, useState)(false);
     const immersive = useIsImmersive();
     const [layouts, track] = useNavLayouts();
-    const onlyGenre = filters.genre.length === 1 && activeCount(filters) === 1 && filters.genre[0];
     const down = top.name === "browse" ? "page" : top.name === "homebrew" ? "homebrew-page" : "screen";
     const toastAction = (0, useRef)(null);
     const onAction = (action) => {
@@ -52,7 +41,6 @@ import { FocusScope, Text, View } from '@ps5-react/core';
         return true;
       }
       if (action !== "l1" && action !== "r1") return false;
-      setBrowsing(false);
       // Right-to-left the sections run leftward, so L1 is the one that moves on (issue #30).
       const forward = action === (rtl ? "l1" : "r1");
       if (forward && section === "files") setChoosingLanguage(true);
@@ -70,10 +58,11 @@ import { FocusScope, Text, View } from '@ps5-react/core';
       choosingLanguage ? /* @__PURE__ */ (0, jsx)(LanguageSheet, { onClose: () => setChoosingLanguage(false) }) : null,
       /* @__PURE__ */ (0, jsx)(View, { style: immersive ? { position: "absolute", left: 0, right: 0, top: 0, zIndex: 40, display: "none" } : { position: "absolute", left: 0, right: 0, top: 0, zIndex: 40 }, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "header", inert: immersive, children: /* @__PURE__ */ (0, jsxs)(View, { onLayout: track("header"), style: { height: 96, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#000000", paddingHorizontal: 48 }, children: [
         /* @__PURE__ */ (0, jsx)(NavPill, { section: shown, layouts }),
-        /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 24 }, children: [
-          /* @__PURE__ */ (0, jsx)(View, { style: rtl ? { marginRight: -24 } : { marginLeft: -24 }, children: /* @__PURE__ */ (0, jsx)(
-            NavItem,
-            {
+        /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 24 }, children: [
+          /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 0 }, children: [
+            // As far from Search as R1 is from the settings button (that row's gap of 6).
+            /* @__PURE__ */ (0, jsx)(View, { style: rtl ? { marginLeft: 6 } : { marginRight: 6 }, children: /* @__PURE__ */ (0, jsx)(ButtonGlyph, { button: rtl ? "r1" : "l1" }) }),
+            /* @__PURE__ */ (0, jsx)(NavItem, {
               focusKey: keyOf("search"),
               icon: "search",
               label: t2("nav.search"),
@@ -81,80 +70,32 @@ import { FocusScope, Text, View } from '@ps5-react/core';
               onPress: on.search,
               onLayout: track("search"),
               nextFocusDown: down
-            }
-          ) }),
-          /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 6 }, children: [
-            /* @__PURE__ */ (0, jsx)(ButtonGlyph, { button: rtl ? "r1" : "l1" }),
-            /* @__PURE__ */ (0, jsx)(
-              NavItem,
-              {
-                focusKey: keyOf("discover"),
-                label: t2("nav.discover"),
-                current: shown === "discover",
-                onPress: on.discover,
-                onLayout: track("discover"),
-                nextFocusDown: down
-              }
-            ),
-            /* @__PURE__ */ (0, jsxs)(View, { style: { position: "relative" }, children: [
-              /* @__PURE__ */ (0, jsx)(
-                NavItem,
-                {
-                  focusKey: keyOf("catalog"),
-                  label: t2("nav.browse"),
-                  trailing: browsing ? "chevronUp" : "chevronDown",
-                  current: shown === "catalog",
-                  onPress: () => setBrowsing((open) => !open),
-                  onLayout: track("catalog"),
-                  nextFocusDown: down,
-                  onFocus: browseFocus.onFocus,
-                  onBlur: () => {
-                    browseFocus.onBlur();
-                    if (!browsingNow.current) leaveBrowse();
-                  }
-                }
-              ),
-              /* @__PURE__ */ (0, jsxs)(Menu, { open: browsing, onClose: () => setBrowsing(false), rows: genres.length + 2, children: [
-                /* @__PURE__ */ (0, jsx)(
-                  MenuItem,
-                  {
-                    label: t2("nav.allGames"),
-                    checked: section === "catalog" && !filters.genre.length,
-                    autoFocus: !onlyGenre,
-                    onSelect: () => on.show(NO_FILTERS, "newest", void 0, "catalog")
-                  }
-                ),
-                /* @__PURE__ */ (0, jsx)(MenuDivider, {}),
-                genres.map(
-                  (genre) => /* @__PURE__ */ (0, jsx)(
-                    MenuItem,
-                    {
-                      label: genreLabel(genre),
-                      checked: onlyGenre === genre,
-                      onSelect: () => on.show({ ...NO_FILTERS, genre: [genre] }, "newest")
-                    },
-                    genre
-                  )
-                )
-              ] })
-            ] })
+            }),
+            /* @__PURE__ */ (0, jsx)(NavItem, {
+              focusKey: keyOf("discover"),
+              label: t2("nav.discover"),
+              current: shown === "discover",
+              onPress: on.discover,
+              onLayout: track("discover"),
+              nextFocusDown: down
+            })
           ] })
         ] }),
-        /* @__PURE__ */ (0, jsxs)(View, { focusKey: "nav:home", onPress: on.discover, nextFocusDown: down, style: { marginHorizontal: 36, flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 6, paddingHorizontal: 12 }, children: [
+        /* @__PURE__ */ (0, jsxs)(View, { focusKey: "nav:home", onPress: on.discover, nextFocusDown: down, style: { marginHorizontal: 22, flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 6, paddingHorizontal: 12 }, children: [
           /* @__PURE__ */ (0, jsx)(FocusRing, {}),
           /* @__PURE__ */ (0, jsx)(Logo, {}),
           /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 21, color: "#8a8a94" }, children: `v${VERSION}` })
         ] }),
         /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 24 }, children: [
-          /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 6 }, children: [
+          /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 0 }, children: [
             /* @__PURE__ */ (0, jsx)(
               NavItem,
               {
-                focusKey: keyOf("top"),
-                label: t2("nav.top"),
-                current: shown === "top",
-                onPress: on.top,
-                onLayout: track("top"),
+                focusKey: keyOf("browse"),
+                label: t2("nav.browse"),
+                current: shown === "browse",
+                onPress: on.browse,
+                onLayout: track("browse"),
                 nextFocusDown: down
               }
             ),

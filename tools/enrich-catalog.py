@@ -64,13 +64,13 @@ STORE_GENRES = {"ACTION": "Action", "ADVENTURE": "Adventure", "ROLE_PLAYING_GAME
                 "SHOOTER": "Shooter", "SIMULATION": "Simulation", "SIMULATOR": "Simulation", "DRIVING_RACING": "Driving/Racing",
                 "RACING": "Driving/Racing", "STRATEGY": "Strategy", "PUZZLE": "Puzzle", "SPORTS": "Sport", "SPORT": "Sport",
                 "FIGHTING": "Fighting", "FAMILY": "Family", "CASUAL": "Casual", "ARCADE": "Arcade", "MUSIC_RHYTHM": "Music/Rhythm",
-                "MUSIC": "Music/Rhythm", "PARTY": "Party", "BRAIN_TRAINING": "Brain Training", "EDUCATIONAL": "Educational",
-                "QUIZ": "Quiz", "FIRST_PERSON_SHOOTER": "Shooter", "THIRD_PERSON_SHOOTER": "Shooter", "SURVIVAL_HORROR": "Horror"}
+                "MUSIC": "Music/Rhythm", "PARTY": "Party", "BRAIN_TRAINING": "Educational", "EDUCATIONAL": "Educational",
+                "QUIZ": "Educational", "FIRST_PERSON_SHOOTER": "Shooter", "THIRD_PERSON_SHOOTER": "Shooter", "SURVIVAL_HORROR": "Horror"}
 IGDB_GENRES = {"Role-playing (RPG)": "Role Playing Games", "Shooter": "Shooter", "Adventure": "Adventure", "Indie": "Indie",
                "Puzzle": "Puzzle", "Racing": "Driving/Racing", "Sport": "Sport", "Strategy": "Strategy",
                "Real Time Strategy (RTS)": "Strategy", "Turn-based strategy (TBS)": "Strategy", "Tactical": "Strategy",
                "Simulator": "Simulation", "Fighting": "Fighting", "Arcade": "Arcade", "Music": "Music/Rhythm",
-               "Hack and slash/Beat 'em up": "Action", "Platform": "Action", "Quiz/Trivia": "Quiz", "Card & Board Game": "Board Game"}
+               "Hack and slash/Beat 'em up": "Action", "Platform": "Action", "Quiz/Trivia": "Educational", "Card & Board Game": "Educational"}
 BOILERPLATE = re.compile(r"(?i)system may need to be updated|playstation\.com/bc|playable on ps5|ps4 version of this game|"
                          r"internet connection required|network features|online features require|terms of service|"
                          r"one-time license fee|all rights reserved|©|\(c\)\s*\d{4}|^\s*\*+\s*$|"
@@ -79,6 +79,8 @@ BOILERPLATE = re.compile(r"(?i)system may need to be updated|playstation\.com/bc
                          r"available for purchase|"
                          r"playstation plus (?:membership|subscription)|ps plus (?:membership|subscription)")
 ABOUT_PARAGRAPHS = 12
+# As many screenshots as the catalog's own games have: each is an image a game's page loads.
+SHOTS = 3
 USER_AGENT = "Mozilla/5.0 (Overdrive catalog tool)"
 
 _lock = threading.Lock()
@@ -202,9 +204,10 @@ def tint_of(cache, cover):
     tint = ""
     try:
         import io
-        pixels = list(Image.open(io.BytesIO(body)).convert("RGB").resize((32, 32)).getdata()) if body else []
-        if pixels:
-            tint = "#" + "".join("%02x" % round(sum(p[i] for p in pixels) / len(pixels)) for i in range(3))
+        # The raw RGB bytes, three to a pixel (Image.getdata goes in Pillow 14).
+        raw = Image.open(io.BytesIO(body)).convert("RGB").resize((32, 32)).tobytes() if body else b""
+        if raw:
+            tint = "#" + "".join("%02x" % round(sum(raw[i::3]) / (len(raw) // 3)) for i in range(3))
     except (OSError, ValueError):
         pass
     cache.put("tints", cover, tint)
@@ -256,7 +259,7 @@ def from_store(found):
         "cover": resized(images.get(10) or images.get(1), 440),
         "hero": resized(images.get(12) or images.get(13), 1920),
         "genres": genres,
-        "shots": shots[:10],
+        "shots": shots[:SHOTS],
         "about": about,
         "summary": summary_of(about) if about else "",
         "releaseDate": date if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) else "",
@@ -351,7 +354,7 @@ def from_igdb(igdb, game, store_name=None):
             "cover": image("t_cover_big", hit["cover"]["image_id"]) if (hit.get("cover") or {}).get("image_id") else None,
             "hero": image("t_1080p", hit["artworks"][0]["image_id"]) if hit.get("artworks") else None,
             "genres": genres,
-            "shots": shots[:10],
+            "shots": shots[:SHOTS],
             "about": about,
             "summary": summary_of(about) if about else "",
             "releaseDate": time.strftime("%Y-%m-%d", time.gmtime(hit["first_release_date"])) if hit.get("first_release_date") else "",

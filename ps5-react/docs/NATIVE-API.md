@@ -649,6 +649,10 @@ behind the writes while they keep the drive at its write rate, and on the
 console one waited until the download ended (minutes on the render thread with
 `inspect`). Each inspection logs `archive inspect queued` and `archive inspect
 done` with both times. On a host without it, it falls back to `inspect`.
+If you're in a render sensitive path, call `Archives.supportsAsyncInspection`
+before trying `inspectAsync`, as the compatibility fallback will do the sync
+read on old hosts. Catch the worker error (if it fails), and don't retry
+`inspect` on render thread.
 
 
 ## Browser download capture (ABI v7)
