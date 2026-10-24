@@ -80,6 +80,7 @@ jobs:
           grep -q "createPremiumizeResolver" app/state/downloads.js
           grep -q "fork-start.js" app/index.jsx && grep -q "startRemote" app/fork-start.js
           grep -q "FORK_FEED" app/state/update.js
+          grep -q "accountsFor" app/game/sources.js && grep -q "noDebrid" app/state/download-queue.js
 
       - name: Push and build
         id: push

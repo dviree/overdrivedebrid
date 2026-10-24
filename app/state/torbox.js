@@ -136,7 +136,7 @@ ${value}\r
     }
     return { add, list, release };
   }
-  function createTorboxResolver({ http, fallback, apiKey, wait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms)), now = Date.now }) {
+  function createTorboxResolver({ http, fallback, apiKey, supports = () => true, wait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms)), now = Date.now }) {
     const call = torboxApi(http, wait);
     async function cached(link, key, signal) {
       try {
@@ -180,7 +180,8 @@ ${value}\r
         return requestLink(call, key, release.torbox, options.signal);
       }
       // A link captured from the console browser is already the final file, tied to that session.
-      if (!key || options.directURL || release.manifestUrl || !(release.browserUrl || release.url)) return fallback.resolve(release, options);
+      // `noDebrid` is "Download directly" on the computer page; a host TorBox doesn't list goes on.
+      if (!key || options.noDebrid || options.directURL || release.manifestUrl || !(release.browserUrl || release.url) || !supports(release.browserUrl || release.url)) return fallback.resolve(release, options);
       try {
         return await viaTorbox(release, key, options);
       } catch (error2) {
