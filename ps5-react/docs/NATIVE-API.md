@@ -568,6 +568,15 @@ stops reporting only: the console finishes an install it accepted. The preview
 fails each request. Fake packages need a kernel that accepts them (kstuff); on
 firmware above 11.60, PS5 fake game packages install but do not launch.
 
+`Packages.install({url, name, contentId})` hands an `http://` or `https://` link
+to the console's own download queue instead: the console fetches and installs
+the package in the background, also once the app has closed, with no copy on a
+drive first. The console sends no cookies or headers of the app's, so only a
+link that works on its own fits. A PS4 package needs its `contentId` (36
+characters at offset 0x40 of its header, which the app reads with a ranged
+request); a PS5 one goes without. Its progress shows in the console's
+Downloads; `cancel()` stops reporting here only.
+
 ## Archive extraction
 
 ```js

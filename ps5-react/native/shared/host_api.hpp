@@ -89,8 +89,10 @@
 //   server.port()                  the port listened on, 0 when closed
 //   server.address()               the console's IPv4 address on the network, or null
 //   server.close()                 stops listening
-//   packages.install(path, name)   task ID; installs a .pkg under /data, /mnt/usb or /mnt/ext through the
-//                                  console's install service (PS5 only, needs the payload loader on 9021)
+//   packages.install(path, name, contentId) task ID; installs a .pkg under /data, /mnt/usb or /mnt/ext through
+//                                  the console's install service (PS5 only, needs the payload loader on 9021);
+//                                  ABI v20: `path` may be an http(s) link the console downloads itself, with
+//                                  a PS4 package's `contentId`
 //   packages.cancel(id)            stops reporting; an install the console accepted carries on
 //   packages.poll()                state/error/contentId/status/written/total; consumes terminal results
 //   network.version()              transport version string

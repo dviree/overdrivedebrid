@@ -534,11 +534,13 @@ export const Archives = Object.freeze({
  * PKG installation through the console's install service (PS5 only; it needs a payload loader on port
  * 9021). The task's snapshot carries `written`/`total` bytes, the console's install `status` and the
  * package's `contentId`; it completes once the title is playable. Cancelling stops reporting only.
+ * `url` in place of `path` (ABI v20) hands an http(s) link to the console's own download queue, which
+ * fetches and installs it in the background; a PS4 package needs its `contentId`.
  */
 export const Packages = Object.freeze({
-  install({path, name = ''}) {
-    const id = host().packages.install(path, name);
-    return networkTask(id, 'Packages.install', path, 'packages');
+  install({path, url, name = '', contentId = ''}) {
+    const id = host().packages.install(url ?? path, name, contentId);
+    return networkTask(id, 'Packages.install', url ?? path, 'packages');
   },
 });
 

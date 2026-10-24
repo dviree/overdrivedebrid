@@ -6,6 +6,22 @@
   answers a computer's browser through a JavaScript handler. A native worker reads up to 16
   connections at once with bounded requests; `LocalServer.address()` gives the console's IPv4
   address. Tested on Linux with the shared implementation; not yet on PS5 hardware.
+## Unreleased — packages installed from a link
+
+- `Packages.install({url, name, contentId})` (ABI v20) hands an http(s) link to the console's own
+  download queue: the console fetches and installs the package in the background, with the app
+  closed too and no copy on a drive first. A PS4 package needs its content ID, which the app reads
+  from the header with a ranged request; a PS5 one goes without. `pkg-installer.elf` speaks `PKI2`
+  (a fourth line, the content ID) for paths and links alike.
+
+## Unreleased — certificates for old firmwares
+
+- Networking apps ship Mozilla's root certificates (curl's `cacert.pem`, pinned as `caBundle`). At
+  start the PS5 host writes the console's own store plus the bundle into one file in the cache and
+  hands curl that path, so sites whose roots an old firmware never received (4.03: GitHub, image
+  hosts) verify. Any failure keeps the system store alone, as before; trust is only added.
+  `python3 tools/ca_bundle.py` pins the newest copy after checking that OpenSSL loads every certificate.
+
 ## Unreleased — requests beside a download
 
 - `Http.request` (and every task without a file destination) runs on a network thread of its own,

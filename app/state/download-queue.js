@@ -95,7 +95,9 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       delete job2.captureError;
       delete job2.captureFile;
       delete job2.fallbacks;
-      if (job2.state === "installing") return { ...job2, state: "installer-required" };
+      // Closed while the console was being handed its link: resumed, it downloads here.
+      if (job2.state === "installing" && !job2.streaming) return { ...job2, state: "installer-required" };
+      delete job2.streaming;
       if (job2.state === "extracting") job2.written = job2.total ?? job2.written;
       if (job2.state === "removing") {
         job2.state = job2.removingFrom ?? "failed";
@@ -378,6 +380,106 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       change();
     }
     const canInstall = () => Boolean(packages) && platform === "ps5";
+    // PKG streaming (issue #50): a plain PKG goes by its link to the console's own download queue, which
+    // installs it in the background, with Overdrive closed too, and with no copy on the drive first.
+    // Archives and game images stay here, as does anything the console refuses: that downloads as before.
+    // The format is read from the file's first bytes, since most sources name none ("binary").
+    var STREAMABLE = ["pkg", "fpkg", "binary"];
+    var PKG_PROBE_BYTES = 4096;
+    var PS4_CONTENT_ID = /[A-Z]{2}\d{4}-[A-Z]{4}\d{5}_\d{2}-[A-Z0-9]{16}/;
+    // How long the console has to start fetching the link before the app leaves it to the console.
+    var STREAM_WATCH_MS = 3e4;
+    async function pkgLink(job2, signal) {
+      let url = job2.options.url;
+      for (let hop = 0; hop < 5; hop++) {
+        const response = await http.request(url, { headers: { Range: `bytes=0-${PKG_PROBE_BYTES - 1}` }, maxBytes: 64 * 1024, signal });
+        const location = response.headers.location;
+        if (response.status >= 300 && response.status < 400 && /^https?:\/\//i.test(location || "")) {
+          url = location;
+          continue;
+        }
+        // A host that ignores the range sends the whole file: the console's downloader needs ranges too.
+        if (response.status !== 206) return null;
+        const head = await response.text();
+        const ps4 = head.startsWith("\x7FCNT"), ps5 = head.startsWith("\x7FFIH");
+        const contentId = ps4 ? head.slice(0, 256).match(PS4_CONTENT_ID)?.[0] : "";
+        if (!ps4 && !ps5 || contentId === void 0) return null;
+        return { url, contentId, kind: ps4 ? "PS4" : "PS5" };
+      }
+      return null;
+    }
+    async function streamed(job2, signal) {
+      const options = job2.options;
+      const format = String(job2.release.format || "binary").toLowerCase();
+      if (!canInstall() || job2.streamTried || job2.written || job2.output || !STREAMABLE.includes(format) || !options?.url || options.pieces || Object.keys(options.headers || {}).length || fs.exists(`${job2.downloadDestination}.part`)) return false;
+      let link;
+      try {
+        link = await pkgLink(job2, signal);
+      } catch (error2) {
+        if (!signal.aborted) console.log(`[download-queue] ${job2.id}: not streamed, its first bytes were not read: ${error2.message}`);
+        return false;
+      }
+      if (!link) return false;
+      job2.streamTried = true;
+      job2.streaming = true;
+      job2.state = "installing";
+      job2.written = 0;
+      job2.message = "";
+      change();
+      console.log(`[download-queue] ${job2.id}: a ${link.kind} PKG, handed to the console's downloads${link.contentId ? ` as ${link.contentId}` : ""}: ${linkForLog(link.url)}`);
+      let task;
+      const accepted = await new Promise((resolve) => {
+        let settled = false, off = null, timer = null;
+        const settle = (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          off?.();
+          resolve(value);
+        };
+        try {
+          task = packages.install({ url: link.url, name: job2.title, contentId: link.contentId });
+        } catch (error2) {
+          console.log(`[download-queue] ${job2.id}: the console was not asked: ${error2.message}`);
+          settle(false);
+          return;
+        }
+        active2.task = task;
+        // Accepted once the console reports bytes, or has said nothing against it within the watch.
+        off = task.subscribe((progress) => {
+          if (progress.written > 0) settle(true);
+        });
+        if (settled) off();
+        task.done.then(() => settle(true), (error2) => {
+          if (!settled) console.log(`[download-queue] ${job2.id}: the console refused the link: ${error2.message}`);
+          settle(false);
+        });
+        timer = setTimeout(() => settle(task.snapshot.state === "installing"), STREAM_WATCH_MS);
+      });
+      delete job2.streaming;
+      // The console goes on by itself with what it took: the app stops listening, and waits until the
+      // installer has let go, since it takes one package at a time (the next one, or this one's
+      // download here, would be turned away).
+      if (task) {
+        task.cancel();
+        await task.done.catch(() => {});
+      }
+      if (job2.state === "pausing") return true;
+      if (!accepted) {
+        job2.state = "resolving";
+        job2.written = 0;
+        change();
+        console.log(`[download-queue] ${job2.id}: downloading it here instead`);
+        return false;
+      }
+      job2.state = "installed";
+      job2.streamed = true;
+      job2.written = job2.total || 0;
+      job2.bytesPerSecond = 0;
+      job2.message = t("downloads.streamed");
+      notifications.show(t("downloads.notice.streamed"), job2.title);
+      return true;
+    }
     async function execute(job2) {
       let task;
       let unsubscribe;
@@ -425,6 +527,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           change();
         }
         if (job2.state === "pausing") return;
+        if (await streamed(job2, signal) || job2.state === "pausing") return;
         const root2 = storageIdentity(job2);
         if (!job2.rootIdentity) {
           job2.rootIdentity = root2;
