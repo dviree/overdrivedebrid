@@ -163,6 +163,12 @@ there are no additional global native functions.
 receive together, 0 for no limit. It applies at once, running downloads included;
 a capped download opens about one connection per MB/s. A download enqueued with
 `unlimited: true`, such as an app's own update, is exempt.
+A download may also be the answer to a form: `method: "POST"` with a `body` (at
+most 1 MiB, sent as `application/x-www-form-urlencoded` unless a header says
+otherwise). It is sent once, so it is never probed or split into ranges, takes no
+`pieces` or `mirrors`, and learns its length as it arrives (`expectedBytes` is not
+enforced); a redirect after the POST is followed with GET. Hosts older than this
+option ignore it and send a GET.
 PS5 builds require `networking: true` and `filesystemAccess: "console"`; desktop
 networking is available by default. See [NETWORKING.md](NETWORKING.md) for
 options, resource limits, errors, lifecycle and the hardware-validation gap.

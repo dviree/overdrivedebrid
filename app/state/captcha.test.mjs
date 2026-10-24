@@ -10,7 +10,7 @@ const page1 = `<form method="POST" action=""><input type="hidden" name="op" valu
 const page2 = `<span id="countdown"><span class="seconds">0</span></span><form name="F1" method="POST" action="https://vault.example/abc123def456"><input type="hidden" name="op" value="download2"><input type="hidden" name="id" value="abc123def456"><input type="hidden" name="rand" value="r4nd"><div class="g-recaptcha" data-sitekey="SITEKEY-1"></div><input type="checkbox" name="adblock"><button>Go</button></form>`;
 
 test('reads XFileSharing forms, digit captchas and widgets', () => {
-  assert.deepEqual(xfsForm(page1, 'https://vault.example/abc123def456').fields, {op: 'download1', id: 'abc123def456', method_free: 'Free Download', method_premium: 'Premium'});
+  assert.deepEqual(xfsForm(page1, 'https://vault.example/abc123def456').fields, {op: 'download1', id: 'abc123def456', method_free: 'Free Download'});
   const second = xfsForm(page2, 'https://vault.example/x');
   assert.equal(second.target, 'https://vault.example/abc123def456');
   assert.deepEqual(second.fields, {op: 'download2', id: 'abc123def456', rand: 'r4nd'});
@@ -54,4 +54,33 @@ test('without a key the host is left to the browser', async () => {
   const error = new BrowserRequired('https://vault.example/abc');
   const resolver = createCaptchaResolver({http: {}, apiKey: () => '', fallback: {resolve: async () => { throw error; }}});
   await assert.rejects(resolver.resolve({url: 'https://vault.example/abc'}), (thrown) => thrown === error);
+});
+
+test('DataVaults: the solved form goes to the download engine as a POST', async () => {
+  const pageOne = page2.replace('https://vault.example/abc123def456', 'https://datavaults.co/abc123def456');
+  const http = {async request(url, options = {}) {
+    const respond = (status, body = '') => ({ok: status < 300, status, url, headers: {}, text: async () => body, json: async () => JSON.parse(body)});
+    if (url.includes('createTask')) return respond(200, JSON.stringify({errorId: 0, taskId: 1}));
+    if (url.includes('getTaskResult')) return respond(200, JSON.stringify({errorId: 0, status: 'ready', solution: {gRecaptchaResponse: 'T'}}));
+    return respond(200, pageOne);
+  }};
+  const resolver = createCaptchaResolver({http, apiKey: () => 'k', fallback: {resolve: async (release) => { throw new BrowserRequired(release.url); }}});
+  const realTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn) => realTimeout(fn, 0);
+  try {
+    const result = await resolver.resolve({url: 'https://datavaults.co/abc123def456'});
+    assert.equal(result.method, 'POST');
+    assert.equal(result.url, 'https://datavaults.co/abc123def456');
+    assert.deepEqual(Object.fromEntries(new URLSearchParams(result.body)), {op: 'download2', id: 'abc123def456', rand: 'r4nd', 'g-recaptcha-response': 'T'});
+  } finally {
+    globalThis.setTimeout = realTimeout;
+  }
+});
+
+test('finds the countdown and the file link as JDownloader does', async () => {
+  const {countdown, linkIn} = await import('./captcha.js');
+  assert.equal(countdown('<span class="seconds">15</span>'), 15);
+  assert.equal(countdown('<span id="countdown_str">Wait <span id="cx">7</span></span>'), 7);
+  assert.equal(linkIn('<a href="https://s1.host.example/d/abcdef123/Game.rar">x</a> "https://s1.host.example/d/abcdef123/Game.rar"'), 'https://s1.host.example/d/abcdef123/Game.rar');
+  assert.equal(linkIn('<a href="https://cdn.example/x?y=1" class="btn">Direct Download Link</a>'), 'https://cdn.example/x?y=1');
 });

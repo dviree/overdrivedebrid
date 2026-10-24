@@ -411,7 +411,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
     async function streamed(job2, signal) {
       const options = job2.options;
       const format = String(job2.release.format || "binary").toLowerCase();
-      if (!canInstall() || job2.streamTried || job2.written || job2.output || !STREAMABLE.includes(format) || !options?.url || options.pieces || Object.keys(options.headers || {}).length || fs.exists(`${job2.downloadDestination}.part`)) return false;
+      if (!canInstall() || job2.streamTried || job2.written || job2.output || !STREAMABLE.includes(format) || !options?.url || options.pieces || options.method === "POST" || Object.keys(options.headers || {}).length || fs.exists(`${job2.downloadDestination}.part`)) return false;
       let link;
       try {
         link = await pkgLink(job2, signal);

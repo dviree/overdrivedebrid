@@ -1033,6 +1033,10 @@ bool Service::configure(Transfer& t) {
     const auto begin = t.begin-(source ? source->piece.offset : 0);
     const std::string range = std::to_string(begin)+"-"+std::to_string(begin+t.length-1);
     set(CURLOPT_RANGE, range.c_str());
+  } else if (job.request.method == "POST" && !job.request.destination.empty()) {
+    // ADDED: a download that answers a form's POST; a redirect after it is followed with GET.
+    set(CURLOPT_POSTFIELDS, job.request.body.c_str());
+    set(CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(job.request.body.size()));
   } else if (job.request.destination.empty()) {
     set(CURLOPT_TIMEOUT, 30L);
     set(CURLOPT_CUSTOMREQUEST, job.request.method.c_str());
@@ -1189,7 +1193,11 @@ bool Service::prepare(Job& job) {
     if (lstat(job.request.destination.c_str(), &existing) == 0) return recover_file(job);
     if (errno != ENOENT) { job.fail(system_error("inspect destination")); return false; }
   }
-  if (job.request.pieces.empty()) {
+  if (job.request.method == "POST") {
+    // ADDED: a form's POST cannot be probed (it is sent once), so the file is read in one stream and
+    // its length learnt as it arrives; a catalog's rounded expectedBytes is not held against it.
+    job.ranged = false; job.known = false; job.total = 0;
+  } else if (job.request.pieces.empty()) {
     if (!probe_source(job, 0)) return false;
     if (job.request.expected_bytes && (!job.known || job.total != job.request.expected_bytes)) {
       job.fail("expectedBytes does not match the server file size"); return false;
