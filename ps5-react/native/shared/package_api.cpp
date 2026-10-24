@@ -22,18 +22,45 @@ bool package_path(JSContext* ctx, JSValueConst value, std::string& out) {
   JS_FreeCString(ctx, input);
   return ok;
 }
+// ABI v20: an http(s) link, which the console's own download queue fetches and installs.
+bool package_link(JSContext* ctx, JSValueConst value, std::string& out) {
+  if (!JS_IsString(value)) return false;
+  std::size_t length = 0;
+  const char* input = JS_ToCStringLen(ctx, &length, value);
+  if (!input) return false;
+  bool ok = length < 1000 && (!std::strncmp(input, "https://", 8) || !std::strncmp(input, "http://", 7));
+  for (std::size_t i = 0; ok && i < length; ++i) ok = static_cast<unsigned char>(input[i]) > ' ' && input[i] != 0x7F;
+  if (ok) out.assign(input, length);
+  JS_FreeCString(ctx, input);
+  return ok;
+}
+std::string string_argument(JSContext* ctx, int argc, JSValueConst* argv, int index) {
+  std::string out;
+  if (argc > index && JS_IsString(argv[index])) {
+    const char* value = JS_ToCString(ctx, argv[index]);
+    if (value) { out = value; JS_FreeCString(ctx, value); }
+  }
+  return out;
+}
+// A PS4 content ID: "UP0000-CUSA00000_00-" and sixteen letters or digits.
+bool content_id(const std::string& id) {
+  if (id.size() != 36 || id[6] != '-' || id[16] != '_' || id[19] != '-') return false;
+  for (std::size_t i = 0; i < id.size(); ++i)
+    if (i != 6 && i != 16 && i != 19 && !((id[i] >= 'A' && id[i] <= 'Z') || (id[i] >= '0' && id[i] <= '9'))) return false;
+  return true;
+}
 JSValue install(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
   std::string path;
-  if (argc < 1 || !package_path(ctx, argv[0], path))
-    return JS_ThrowTypeError(ctx, "packages.install: expected a .pkg or .fpkg path under /data, /mnt/usb or /mnt/ext");
-  std::string name;
-  if (argc > 1 && JS_IsString(argv[1])) {
-    const char* value = JS_ToCString(ctx, argv[1]);
-    if (value) { name = value; JS_FreeCString(ctx, value); }
-  }
+  const bool remote = argc > 0 && package_link(ctx, argv[0], path);
+  if (argc < 1 || (!remote && !package_path(ctx, argv[0], path)))
+    return JS_ThrowTypeError(ctx, "packages.install: expected a .pkg or .fpkg path under /data, /mnt/usb or /mnt/ext, or an http(s) link");
+  std::string name = string_argument(ctx, argc, argv, 1);
   if (name.find('\n') != std::string::npos || name.size() > 200) return JS_ThrowTypeError(ctx, "packages.install: name must be one line of at most 200 bytes");
+  std::string id_given = string_argument(ctx, argc, argv, 2);
+  if (!id_given.empty() && (!remote || !content_id(id_given)))
+    return JS_ThrowTypeError(ctx, "packages.install: a content ID goes with a link, as UP0000-CUSA00000_00-XXXXXXXXXXXXXXXX");
   std::string error;
-  const auto id = packages::install(std::move(path), std::move(name), error);
+  const auto id = packages::install(std::move(path), std::move(name), std::move(id_given), error);
   if (!id) return JS_ThrowPlainError(ctx, "packages.install: %s", error.c_str());
   return JS_NewUint32(ctx, id);
 }
@@ -63,7 +90,7 @@ JSValue poll(JSContext* ctx, JSValueConst, int, JSValueConst*) {
 
 JSValue ps5_react_package_api(JSContext* ctx) {
   JSValue api = JS_NewObject(ctx);
-  JS_SetPropertyStr(ctx, api, "install", JS_NewCFunction(ctx, install, "install", 2));
+  JS_SetPropertyStr(ctx, api, "install", JS_NewCFunction(ctx, install, "install", 3));
   JS_SetPropertyStr(ctx, api, "cancel", JS_NewCFunction(ctx, cancel, "cancel", 1));
   JS_SetPropertyStr(ctx, api, "poll", JS_NewCFunction(ctx, poll, "poll", 0));
   return api;
