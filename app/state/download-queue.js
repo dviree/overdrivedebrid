@@ -23,7 +23,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
   var ACTIVE = ["resolving", "connecting", "downloading", "verifying", "extracting", "installing", "pausing"];
   var BUSY = ["queued", ...ACTIVE];
   var COMPLETE = ["downloaded", "file-downloaded", "installer-required", "installed", "extraction-required", "extracted"];
-  var ADOPTED = "A partial download from another source holds this name. Resume it from its original source, or delete it in Files.";
+  var ADOPTED = "A partial download from another source holds this name. Retry starts over and replaces it, or resume it from its original source.";
   var DELETED = "Its partial files were deleted. Restart to download it again, or remove it.";
   var REMOVAL_CUT = "The app closed while deleting its files. Delete it again.";
   // The passwords the catalog's archives are published with. Some entries name none or the wrong one,
@@ -36,6 +36,14 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
   // A LinkVault page adds its own check and a mirror page before the host's, so a link capture gets
   // the payload's longest window.
   var LINK_CAPTURE_SECONDS = 300;
+  // Datanodes' dlproxy.uk gateway (FileKeeper's files too) can answer every range HTTP 503 with
+  // Retry-After: 60 for a while. The engine honours it, with its connections down to a few, and the
+  // download sits at 0 MB/s for minutes; a new transfer of the same link, which Pause and Resume
+  // start, goes on at full speed at once (issue #77). So a download from it that gets nothing for
+  // STALL_MS starts over by itself, from what it has written. A third start in a row with nothing
+  // received asks the source for a new link; past STALL_RESTARTS the engine's own retries decide.
+  var STALL_MS = 9e4;
+  var STALL_RESTARTS = 10;
   // The folder an extraction is written to, and its game's under homebrew: the source's file name
   // without the ".binary" a source of unknown format downloads under. Jobs extracted before used it
   // with that suffix, so ownedPaths claims both.
@@ -130,6 +138,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
     packages,
     releasesOf,
     browserCapture,
+    stallMs = STALL_MS,
     wait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms))
   }) {
     const legacy = `${dataDir}/overdrive/downloads.json`;
@@ -264,15 +273,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       job2.debridProgress = progress;
       emit2();
     };
-    // Datanodes' dlproxy.uk gateway (FileKeeper's files too) can answer every range HTTP 503 with
-    // Retry-After: 60 for a while. The engine honours it, with its connections down to a few, and the
-    // download sits at 0 MB/s for minutes; a new transfer of the same link, which Pause and Resume
-    // start, goes on at full speed at once (issue #77). So a download from it that gets nothing for
-    // STALL_MS starts over by itself, from what it has written. A third start in a row with nothing
-    // received asks the source for a new link; past STALL_RESTARTS the engine's own retries decide.
-    var STALL_MS = 9e4;
-    var STALL_RESTARTS = 10;
     function restartsAfterStall(job2) {
+      // The hosts whose gateway answers every range HTTP 503 for a while: DataNodes and FileKeeper
+      // both. Named by kind too, since the resolved URL of a captured link need not be the gateway.
+      const source2 = job2.parts ? job2.currentSource : job2.release;
+      if (source2 && ["filekeeper", "datanodes"].includes(sourceKind(source2))) return true;
       try {
         return /(?:^|\.)dlproxy\.uk$/.test(webURL(job2.options?.url).host);
       } catch {
@@ -280,19 +285,22 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       }
     }
     function stallWatch(job2, task) {
-      let moved = Date.now(), seen = -1;
+      let moved = Date.now(), best = -1;
       return (progress) => {
         const bytes = (progress.received || 0) + (progress.completedBytes ?? progress.written ?? 0);
-        if (bytes !== seen) {
-          if (seen >= 0 && job2.stalls) {
+        // Only a new high counts: a range the engine retries drops `received` back to what the file
+        // already holds, and with a plain "changed" test every one of those reset the wait, so a
+        // download 503-ing range after range never reached it (issue #77, Narci115's 4.7 MB log).
+        if (bytes > best) {
+          if (best >= 0 && job2.stalls) {
             console.log(`[download-queue] ${job2.id}: receiving again after ${job2.stalls} restart(s)`);
             delete job2.stalls;
           }
-          seen = bytes;
+          best = bytes;
           moved = Date.now();
           return;
         }
-        if (active2?.restarting || Date.now() - moved < STALL_MS || !["connecting", "downloading"].includes(progress.state) || !restartsAfterStall(job2)) return;
+        if (active2?.restarting || Date.now() - moved < stallMs || !["connecting", "downloading"].includes(progress.state) || !restartsAfterStall(job2)) return;
         if ((job2.stalls || 0) >= STALL_RESTARTS) return;
         job2.stalls = (job2.stalls || 0) + 1;
         // Only FileKeeper's link comes from a form the app posts again; DataNodes' needs the browser.
@@ -355,7 +363,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
             await task.done;
             installed.push(path);
           } catch (error2) {
-            console.log(`[download-queue] install refused ${path}:`, error2.message);
+            console.log(`[download-queue] install refused ${path}:`, consoleReason(error2.message));
             if (!backport(path) || paths.every(backport)) throw error2;
           } finally {
             off();
@@ -408,10 +416,15 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       }
       return null;
     }
+    // The console's own words: its error names the link first ("Packages.install <url>: <reason>
+    // (0x<code>)"), and app.log cuts a line at 382 characters, so a signed CDN link filled the line and
+    // the reason went missing exactly when it was wanted (a Wolverine fPKG, 2026-10-25). The link is
+    // logged already, masked, on the line before.
+    var consoleReason = (message) => String(message || "").replace(/^Packages\.install \S+: /, "");
     async function streamed(job2, signal) {
       const options = job2.options;
       const format = String(job2.release.format || "binary").toLowerCase();
-      if (!canInstall() || job2.streamTried || job2.written || job2.output || !STREAMABLE.includes(format) || !options?.url || options.pieces || Object.keys(options.headers || {}).length || fs.exists(`${job2.downloadDestination}.part`)) return false;
+      if (!canInstall() || job2.streamTried || job2.written || job2.output || !STREAMABLE.includes(format) || !options?.url || options.pieces || options.method === "POST" || Object.keys(options.headers || {}).length || fs.exists(`${job2.downloadDestination}.part`)) return false;
       let link;
       try {
         link = await pkgLink(job2, signal);
@@ -451,7 +464,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         });
         if (settled) off();
         task.done.then(() => settle(true), (error2) => {
-          if (!settled) console.log(`[download-queue] ${job2.id}: the console refused the link: ${error2.message}`);
+          if (!settled) console.log(`[download-queue] ${job2.id}: the console refused the link: ${consoleReason(error2.message)}`);
           settle(false);
         });
         timer = setTimeout(() => settle(task.snapshot.state === "installing"), STREAM_WATCH_MS);
@@ -511,7 +524,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
             job2.options = formats.manifest(await response.json());
           } else {
             if (!job2.release.url && !job2.release.browserUrl) throw new Error("This release has no download URL.");
-            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" || sources.debrid?.() && !job2.noDebrid || job2.release.torbox ? await sources.resolve(job2.release, { signal, directURL: job2.directURL, noDebrid: job2.noDebrid, onStatus: debridStatus(job2) }) : { url: webURL(job2.release.url).url };
+            // A pasted link may come from a service of the user's own (a qBittorrent's WebUI), whose
+            // file is behind its password: the release carries the headers for it (link-download.js).
+            // MODIFIED: with a debrid key, a link goes through TorBox and Premiumize, unless it carries
+            // such headers or "Download directly" asked for the host itself.
+            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" || sources.debrid?.() && !job2.noDebrid && !job2.release.headers || job2.release.torbox ? await sources.resolve(job2.release, { signal, directURL: job2.directURL, noDebrid: job2.noDebrid, onStatus: debridStatus(job2) }) : { url: webURL(job2.release.url).url, headers: job2.release.headers };
             delete job2.phase;
             delete job2.debridProgress;
             job2.options = {
@@ -667,7 +684,8 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       // are none Overdrive knows, the host sent something else, usually a web page. Leaving it as a
       // downloaded ".binary" (issue #8) told the user nothing. Only a small file reads as one, though:
       // gigabytes the headers don't name are still the game, in a format not checked (issue #24).
-      if (!kind && job2.release.format === "binary" && (fs.stat(job2.downloadDestination)?.size || 0) < WEB_PAGE_BYTES) throw new Error("Not a game file: the host sent something else.");
+      // A pasted link is the user's own file, not a catalog entry: whatever it is, it is kept.
+      if (!kind && !job2.release.link && job2.release.format === "binary" && (fs.stat(job2.downloadDestination)?.size || 0) < WEB_PAGE_BYTES) throw new Error("Not a game file: the host sent something else.");
       const named = kind ? null : namedKind(job2);
       if (!kind && !named) return;
       if (named) console.log(`[download-queue] headers name no format; the file's name says ${named}`);
@@ -1833,8 +1851,13 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       async restart(id) {
         const job2 = find(id);
         if (!["paused", "failed", "awaiting-browser"].includes(job2.state) || active2?.job === job2) return;
-        if (job2.adopted) throw new Error(ADOPTED);
-        const paths = !job2.parts?.[job2.partIndex]?.completed && (job2.options || job2.rootIdentity || job2.written || fs.exists(job2.artifact.destination + ".part") || fs.exists(job2.artifact.destination + ".resume")) ? partialFiles(job2) : [];
+        // A partial this app did not write ("adopted", left by an earlier session) is what the last
+        // attempt stopped on: its checkpoint names another run and can never be resumed. Retry is the
+        // player asking to start over, so that partial goes with the rest; refusing here left the task
+        // failed for good, with no way to resume it or begin it again (issue #111).
+        const adopted = job2.adopted;
+        delete job2.adopted;
+        const paths = !job2.parts?.[job2.partIndex]?.completed && (adopted || job2.options || job2.rootIdentity || job2.written || fs.exists(job2.artifact.destination + ".part") || fs.exists(job2.artifact.destination + ".resume")) ? partialFiles(job2) : [];
         stopCapture(job2);
         if (paths.length) await removing(job2, () => removeAll(paths));
         delete job2.directURL;

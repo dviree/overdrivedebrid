@@ -81,6 +81,7 @@ jobs:
           grep -q "fork-start.js" app/index.jsx && grep -q "startRemote" app/fork-start.js
           grep -q "FORK_FEED" app/state/update.js
           grep -q "accountsFor" app/game/sources.js && grep -q "noDebrid" app/state/download-queue.js
+          grep -q "createCaptchaResolver" app/state/downloads.js && grep -q "job.request.method == \"POST\"" ps5-react/native/shared/network.cpp
 
       - name: Push and build
         id: push

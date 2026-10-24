@@ -132,6 +132,8 @@ struct Transfer {
   // A 200 or 206 that is not the range asked for but carries the file's validators: a proxy or a busy
   // node answering oddly, retried a few times rather than taken for a changed file.
   bool glitch = false;
+  // This request asks a debrid CDN for the file: its Retry-After is honoured in full (see debrid_cdn).
+  bool debrid = false;
   // Opened while its origin cooled down: once answered on a fresh connection, the cooldown ends.
   bool gated = false;
   Clock::time_point started{};
@@ -268,13 +270,18 @@ unsigned attempt_limit(const Transfer& t) {
   return 0;
 }
 
+// Defined with host_of below; declared here for the waiters that only see a Transfer.
+bool debrid_cdn(const std::string& url);
+unsigned retry_ceiling(bool debrid);
+
 // Exponential from half a second up to 30 seconds, with jitter so throttled ranges do not return
-// together, and never sooner than the server's Retry-After (up to a minute).
+// together, and never sooner than the server's Retry-After: up to a minute, or five on a debrid CDN,
+// which asks for minutes and means it.
 std::chrono::milliseconds retry_delay(const Transfer& t, unsigned attempt) {
   thread_local std::minstd_rand random(static_cast<unsigned>(Clock::now().time_since_epoch().count()));
   const unsigned base = std::min(30000u, 500u << std::min(attempt-1, 6u));
   const unsigned jittered = base/2 + static_cast<unsigned>(random() % (base/2+1));
-  return std::chrono::milliseconds(std::max(std::min(t.retry_after, 60u)*1000u, jittered));
+  return std::chrono::milliseconds(std::max(std::min(t.retry_after, retry_ceiling(t.debrid))*1000u, jittered));
 }
 
 // One line per failed range, with what the server answered: enough to tell throttling from a changed file.
@@ -560,6 +567,30 @@ std::string host_of(const std::string& url) {
   return url.substr(start, end == std::string::npos ? std::string::npos : end-start);
 }
 
+// A debrid service's download node (TorBox, Real-Debrid, Premiumize): the file comes from a direct
+// link on a CDN that counts connections per account and answers HTTP 429 with a Retry-After of
+// minutes when a download manager opens too many at once. Such a link is given few connections and
+// the server's own wait, in full; every other host keeps the defaults, unchanged.
+bool debrid_cdn(const std::string& url) {
+  static const char* const domains[] = {"tb-cdn.io", "real-debrid.com", "premiumize.me"};
+  auto host = host_of(url);
+  // A port is not part of the domain; a bare IPv6 address keeps its colons and matches nothing.
+  if (const auto colon = host.rfind(':'); colon != std::string::npos && host.find(':') == colon)
+    host.resize(colon);
+  for (const char* domain : domains) {
+    const std::size_t length = std::strlen(domain);
+    if (host == domain) return true;
+    if (host.size() > length && host.compare(host.size()-length, length, domain) == 0 &&
+        host[host.size()-length-1] == '.') return true;
+  }
+  return false;
+}
+
+// How long a waiter honours the server's Retry-After: the debrid CDNs send several minutes.
+unsigned retry_ceiling(bool debrid) {
+  return debrid ? 300u : 60u;
+}
+
 // The URL configure() requests for a range of this source on this mirror.
 const std::string& range_url(const Job& job, unsigned source, unsigned mirror) {
   if (!job.sources.empty()) {
@@ -624,7 +655,8 @@ struct Window {
     grown = now;
   }
   void shrink(Clock::time_point now, unsigned retry_after) {
-    if (retry_after) paused_until = std::max(paused_until, now+std::chrono::seconds(std::min(retry_after, 60u)));
+    if (retry_after) paused_until = std::max(paused_until,
+      now+std::chrono::seconds(std::min(retry_after, retry_ceiling(debrid_cdn(host)))));
     // Ranges failing together report one overload: one cut per two seconds.
     if (congested && now-shrunk < std::chrono::seconds(2)) return;
     allowed = std::max(1u, std::min(allowed, in_flight+1)/2);
@@ -1013,6 +1045,8 @@ bool Service::configure(Transfer& t) {
   const std::string* mirror = !source && t.mirror ? &job.mirrors[t.mirror-1] : nullptr;
   t.redirected = !mirror && !t.probe && !location.empty();
   const auto& url = mirror ? *mirror : t.redirected ? location : origin;
+  // A debrid direct link (or the node a redirect sent it to) waits as long as that node asks.
+  t.debrid = debrid_cdn(url);
   const auto& validator = source ? source->etag : job.etag.empty() ? job.last_modified : job.etag;
   const bool ranged = source ? source->ranged : job.ranged;
   if (ranged && !t.probe && !validator.empty()) add("If-Range: " + validator);
@@ -1033,6 +1067,10 @@ bool Service::configure(Transfer& t) {
     const auto begin = t.begin-(source ? source->piece.offset : 0);
     const std::string range = std::to_string(begin)+"-"+std::to_string(begin+t.length-1);
     set(CURLOPT_RANGE, range.c_str());
+  } else if (job.request.method == "POST" && !job.request.destination.empty()) {
+    // ADDED: a download that answers a form's POST; a redirect after it is followed with GET.
+    set(CURLOPT_POSTFIELDS, job.request.body.c_str());
+    set(CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(job.request.body.size()));
   } else if (job.request.destination.empty()) {
     set(CURLOPT_TIMEOUT, 30L);
     set(CURLOPT_CUSTOMREQUEST, job.request.method.c_str());
@@ -1078,7 +1116,17 @@ bool Service::probe_source(Job& job, unsigned source_index) {
     if (!configure(probe)) { job.fail(probe.error); return false; }
     result = perform_probe(probe); probe.result = result;
     if (job.cancelled) return false;
-    if (attempt >= std::min(6u, attempt_limit(probe))) break;
+    const unsigned tries = std::max(1u, std::min(6u, attempt_limit(probe)));
+    // A debrid CDN answering 429 at the probe is the one failure users report: its wait is logged in
+    // full, so a submitted app.log says which node it was and how long it asked for.
+    if (probe.status >= 400 && probe.debrid) {
+      platform_log(("download: probe " + std::to_string(attempt) + "/" + std::to_string(tries) +
+                    " of the debrid CDN " + host_of(range_url(job, source_index, 0)) + " answered HTTP " +
+                    std::to_string(probe.status) + ", retry-after " +
+                    (probe.retry_after ? std::to_string(probe.retry_after) + " s" : std::string("-")) +
+                    (attempt >= tries ? "; giving up" : "; waiting")).c_str());
+    }
+    if (attempt >= tries) break;
     ++job.retries;
     const auto retry_at = Clock::now()+retry_delay(probe, attempt);
     while (!job.cancelled && Clock::now() < retry_at) curl_multi_poll(multi_, nullptr, 0, 50, nullptr);
@@ -1086,7 +1134,9 @@ bool Service::probe_source(Job& job, unsigned source_index) {
   if (job.cancelled) return false;
   if (job.request.reject_html && denied(probe)) { job.fail(probe.error); return false; }
   if (probe.status >= 400) {
-    job.fail("range probe failed (HTTP " + std::to_string(probe.status) + ", " + curl_easy_strerror(result) + ")"); return false;
+    const std::string where = probe.debrid ? " at the debrid CDN " + host_of(range_url(job, source_index, 0)) +
+      (probe.retry_after ? ", which asked to wait " + std::to_string(probe.retry_after) + " s" : std::string()) : std::string();
+    job.fail("range probe failed (HTTP " + std::to_string(probe.status) + ", " + curl_easy_strerror(result) + ")" + where); return false;
   }
   if (job.request.reject_html && (probe.content_type.starts_with("text/html") ||
       probe.content_type.starts_with("application/xhtml+xml"))) {
@@ -1189,7 +1239,11 @@ bool Service::prepare(Job& job) {
     if (lstat(job.request.destination.c_str(), &existing) == 0) return recover_file(job);
     if (errno != ENOENT) { job.fail(system_error("inspect destination")); return false; }
   }
-  if (job.request.pieces.empty()) {
+  if (job.request.method == "POST") {
+    // ADDED: a form's POST cannot be probed (it is sent once), so the file is read in one stream and
+    // its length learnt as it arrives; a catalog's rounded expectedBytes is not held against it.
+    job.ranged = false; job.known = false; job.total = 0;
+  } else if (job.request.pieces.empty()) {
     if (!probe_source(job, 0)) return false;
     if (job.request.expected_bytes && (!job.known || job.total != job.request.expected_bytes)) {
       job.fail("expectedBytes does not match the server file size"); return false;
@@ -1251,12 +1305,27 @@ bool Service::prepare(Job& job) {
       !std::memcmp(saved.identity, job.identity.c_str(), 65) && read_all(meta, job.completed.data(), job.completed.size());
     if (meta >= 0) close(meta);
     for (unsigned char value : job.completed) if (value > 1) valid = false;
-    if (!valid) { job.fail("partial file has no matching durable checkpoint; remove .part/.resume or choose another destination"); return false; }
-    for (std::size_t i = 0; i < job.completed.size(); ++i) if (job.completed[i]) {
+    if (valid) for (std::size_t i = 0; i < job.completed.size(); ++i) if (job.completed[i]) {
       const auto begin = job.sources.empty() ? i*job.request.range_bytes : job.segments[i].begin;
       const auto end = job.sources.empty() ? std::min(job.total, (i+1)*job.request.range_bytes) : begin+job.segments[i].length;
-      if (end > static_cast<std::uint64_t>(existing.st_size)) { job.fail("partial file is shorter than its checkpoint"); return false; }
+      // A range the checkpoint calls saved that the file no longer holds is the same dead end.
+      if (end > static_cast<std::uint64_t>(existing.st_size)) { valid = false; break; }
       job.committed += end-begin;
+    }
+    if (!valid) {
+      // A partial its checkpoint does not match, or one shorter than the ranges it calls saved, can
+      // never resume: a restarted console, a changed validator or a file that moved changes the
+      // identity. Keeping it failed the download for good, with nothing the player could do from the
+      // app (issues #110 and #111), so it goes and the transfer starts over from zero.
+      platform_log(("download: " + job.request.destination + ".part cannot resume; starting over").c_str());
+      if (job.fd >= 0) close(job.fd);
+      job.fd = -1;
+      unlink(partial.c_str());
+      unlink((job.request.destination+".resume").c_str());
+      std::fill(job.completed.begin(), job.completed.end(), 0);
+      job.committed = 0;
+      job.fd = open(partial.c_str(), O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
+      if (job.fd < 0) { job.fail(system_error("open partial file")); return false; }
     }
     if (job.committed && job.etag.empty() && job.sources.empty() && !check_sample(job)) return false;
   }
@@ -1458,9 +1527,20 @@ void Service::run_job(const std::shared_ptr<Job>& job) {
     // A capped download needs few connections: about one per MB/s, so each gets bytes often enough to
     // stay over curl's low-speed cutoff (1 byte/s for 30 s) between its turns.
     const std::uint64_t capped = job->request.unlimited ? 0 : rate_limit_.load();
-    const unsigned limit = !job->ranged ? 1 : !capped ? job->request.connections :
+    // The probe above followed any redirect, so this is the URL the ranges will ask for: a debrid
+    // link's CDN node, whether the service handed it out or redirected to it.
+    const std::string target = range_url(*job, 0, 0);
+    const bool debrid = debrid_cdn(target);
+    const unsigned asked = !job->ranged ? 1 : !capped ? job->request.connections :
       std::min(std::max(static_cast<unsigned>(capped/(1024*1024)), 2u), job->request.connections);
+    // A debrid CDN counts connections per account and sheds the rest as 429, so it gets eight at
+    // most whatever the app asked for; every other host keeps the number the app set.
+    const unsigned limit = debrid ? std::min(asked, 8u) : asked;
     const unsigned initial = job->request.adaptive ? std::min(8u, limit) : limit;
+    if (debrid && asked > limit) {
+      platform_log(("download: " + host_of(target) + " is a debrid CDN: " + std::to_string(limit) +
+        " connections instead of " + std::to_string(asked) + ", Retry-After honoured up to 300 s").c_str());
+    }
     std::vector<Window> windows;
     const auto window_for = [&](const std::string& url) {
       auto host = host_of(url);

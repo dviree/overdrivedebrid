@@ -161,6 +161,14 @@ JSValue begin(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv, bool d
         !number_option(ctx, options, "expectedBytes", request.expected_bytes, 1, 9007199254740991ULL) ||
         !pieces(ctx, options, request) || !mirrors(ctx, options, request))
       return JS_ThrowTypeError(ctx, "%s %s: invalid download options; pieces must cover expectedBytes exactly without gaps or overlaps, and mirrors (at most 4 http(s) URLs) cannot be combined with pieces", call, path.c_str());
+    // ADDED: a download that is the answer to a form's POST (a file host's captcha form, captcha.js):
+    // one stream, no ranges, mirrors or pieces, since the form is sent only once.
+    if (!string_option(ctx, options, "method", request.method, 16) || !string_option(ctx, options, "body", request.body, 1024*1024) ||
+        (request.method != "GET" && request.method != "POST") ||
+        (request.method == "POST" && (!request.pieces.empty() || !request.mirrors.empty())))
+      return JS_ThrowTypeError(ctx, "%s %s: method must be GET or POST, and a POST download takes no pieces or mirrors", call, path.c_str());
+    if (request.method == "GET" && !request.body.empty())
+      return JS_ThrowTypeError(ctx, "%s %s: a GET download takes no body", call, path.c_str());
     request.connections = static_cast<unsigned>(connections);
   } else {
     if (!string_option(ctx, options, "method", request.method, 16) ||

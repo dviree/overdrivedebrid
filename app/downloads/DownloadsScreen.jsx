@@ -2,8 +2,9 @@
 // reconstructed from the esbuild bundle in eboot.bin
 
 import '../assets/Inter-Regular.ttf';
-import { jsx, jsxs } from 'react/jsx-runtime';
+import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useRef, useState } from 'react';
+import { useAddDownloads } from './AddDownloads.jsx';
 import { DownloadRow, primaryKey } from './DownloadRow.jsx';
 import { SummaryPanel } from './SummaryPanel.jsx';
 import { useJobs } from './useQueue.js';
@@ -70,6 +71,7 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
   }
   function DownloadsScreen({ onBack, onBrowse, onOpenGame }) {
     const t2 = useT();
+    const add = useAddDownloads();
     const { jobs, error: error2 } = useJobs();
     (0, useEffect)(() => {
       try {
@@ -133,16 +135,22 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
         /* @__PURE__ */ (0, jsx)(Text, { style: { width: 420, fontFamily: "Inter-Regular", fontSize: 21, color: "#f2f2f3", numberOfLines: 2, ellipsizeMode: "tail", lineHeight: 30 }, children: failure })
       ] }),
       /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, flexDirection: "row", gap: 48, paddingHorizontal: 48 }, children: [
-        jobs.length > 0 ? /* @__PURE__ */ (0, jsx)(ScrollView, { style: { flex: 1 }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 60, paddingBottom: 60 }, children: [
-          /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.active", jobs: active2, first, handlers }),
-          /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.stopped", jobs: stopped, first, handlers }),
-          /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.completed", jobs: done, first, handlers })
-        ] }) }) : /* @__PURE__ */ (0, jsx)(Empty, { error: error2, onBrowse }),
+        // Downloads of the user's own (issues #107, #89, #20) scroll with the list, above it: a strip
+        // fixed outside took the focus with it as soon as the list was scrolled down.
+        /* @__PURE__ */ (0, jsx)(ScrollView, { style: { flex: 1 }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 60, paddingBottom: 60 }, children: [
+          add.strip,
+          jobs.length > 0 ? /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
+            /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.active", jobs: active2, first, handlers }),
+            /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.stopped", jobs: stopped, first, handlers }),
+            /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.completed", jobs: done, first, handlers })
+          ] }) : /* @__PURE__ */ (0, jsx)(View, { style: { height: 480 }, children: /* @__PURE__ */ (0, jsx)(Empty, { error: error2, onBrowse }) })
+        ] }) }),
         /* @__PURE__ */ (0, jsx)(SummaryPanel, { error: error2, onFocus: () => {
           focused.current = null;
         } })
       ] }),
-      /* @__PURE__ */ (0, jsx)(ButtonHints, { hints: jobs.length > 0 ? LIST_HINTS : EMPTY_HINTS })
+      /* @__PURE__ */ (0, jsx)(ButtonHints, { hints: jobs.length > 0 ? LIST_HINTS : EMPTY_HINTS }),
+      add.dialogs
     ] }) });
   }
 

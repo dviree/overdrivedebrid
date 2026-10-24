@@ -346,6 +346,9 @@ test('browser capture delivers only its result and cancellation rejects as Abort
     snapshots = [{id: 2, state: 'cancelled'}]; tick();
     await assert.rejects(second.done, {name: 'AbortError'});
   } finally {
+    // Drain pending captures even if an assertion fails, so the shared timer cannot leak into the next test.
+    snapshots = Array.from({length: next - 1}, (_, index) => ({id: index + 1, state: 'cancelled'}));
+    tick?.();
     globalThis.setInterval = originalInterval; globalThis.clearInterval = originalClear;
     delete globalThis.__ps5ReactNative;
   }

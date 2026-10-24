@@ -18,7 +18,9 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
     const written = sized.reduce((sum, job2) => sum + Math.min(job2.written, job2.total), 0);
     return { count: busy.length, percent: total ? Math.floor(written / total * 100) : null };
   }
-  function DownloadsBadge() {
+  // `inset` is the item's own horizontal padding, so the bar runs from the start of the icon to the
+  // end of the count: 24 on a full NavItem, 14 on a compact one.
+  function DownloadsBadge({ inset = 24 }) {
     const [state, setState] = (0, useState)(IDLE);
     const focused = useIsFocused();
     (0, useEffect)(() => {
@@ -38,7 +40,7 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
     if (!state.count) return null;
     return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
       /* @__PURE__ */ (0, jsx)(Text, { style: [{ fontFamily: "Inter-Regular", fontSize: 23 }, { color: focused ? colors.fg : "#f2f2f3a6" }], children: String(state.count) }),
-      state.percent === null ? null : /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", left: 24, right: 24, bottom: 6, height: 5, overflow: "hidden", borderRadius: 14999, backgroundColor: "#ffffff33" }, children: /* @__PURE__ */ (0, jsx)(View, { style: [{ height: "100%", backgroundColor: "#f2f2f3" }, { width: `${state.percent}%` }] }) })
+      state.percent === null ? null : /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", left: inset, right: inset, bottom: 6, height: 5, overflow: "hidden", borderRadius: 14999, backgroundColor: "#ffffff33" }, children: /* @__PURE__ */ (0, jsx)(View, { style: [{ height: "100%", backgroundColor: "#f2f2f3" }, { width: `${state.percent}%` }] }) })
     ] });
   }
 

@@ -5,7 +5,7 @@ import { t } from '../i18n/core.js';
 import { accountsFor } from '../state/debrid-hosts.js';
 import { sourceKind } from '../state/download-sources.js';
 import { isPs5Package } from '../state/firmware.js';
-import { isPatchOnly } from '../state/release-sets.js';
+import { isDlc, isPatchOnly } from '../state/release-sets.js';
 import { formatBytes } from '../state/size.js';
 
   var KIND = {
@@ -79,7 +79,6 @@ import { formatBytes } from '../state/size.js';
       status: release.unavailableReason ? null : compatibility(release)
     };
   }
-  var isDlc = ({ label }) => /\bDLCs?\b/i.test(label || "") && !/\b(?:game|full)\b|\+\s*(?:all\s+)?DLCs?\b|\bwith\s+(?:all\s+)?DLCs?\b|\bincl/i.test(label);
   var GROUP_RANK = { direct: 0, page: 1, browser: 2, unavailable: 3 };
   var HEALTH_RANK = { ok: 0, flaky: 2 };
   var isBackport = ({ label }) => /\bback\s*port\b/i.test(label || "");

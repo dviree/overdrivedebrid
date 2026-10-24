@@ -6,6 +6,7 @@ import test from 'node:test';
 register(new URL('./download-queue-test-loader.mjs', import.meta.url), import.meta.url);
 const {applyUpdate, fetchUpdate, loadUpdate, valid} = await import('./catalog-update.js');
 const {FileSystem, Http} = await import('@ps5-react/core');
+const {VERSION} = await import('../version.js');
 
 const line = (id, extra = {}) => ({
   id, title: 'Demo ' + id, platform: id.startsWith('PPSA') ? 'ps5' : 'ps4', providers: ['vikingfile'], direct: false,
@@ -13,7 +14,7 @@ const line = (id, extra = {}) => ({
   art: {cover: 'https://example.com/c.png', tint: '#112233'}, added: '2026-10-21', source: 'superpsx', ...extra,
 });
 const update = (extra = {}) => ({
-  format: 1, version: '1.0.9', base: 'abc', generated: '2026-10-22T02:00:00Z',
+  format: 1, version: VERSION, base: 'abc', generated: '2026-10-22T02:00:00Z',
   games: [{block: 'games', line: line('CUSA00001')}, {block: 'twins', line: line('PPSA00002', {work: 7})}],
   removed: ['CUSA00009'],
   releases: {CUSA00001: [{id: 'r1', filename: 'CUSA00001-game-1-r1.pkg', format: 'pkg', url: 'https://example.com'}], CUSA00003: null},

@@ -125,7 +125,9 @@
       const url = release.browserUrl || release.url;
       const kind = sourceKind(release);
       if (kind === "unavailable") throw new Error("Source unavailable: no download URL.");
-      if (kind === "direct") return { url: webURL(url).url, rejectHtml: true };
+      // A pasted link may be behind the password of the service it came from (a qBittorrent WebUI):
+      // the release then carries the headers to send with it.
+      if (kind === "direct") return { url: webURL(url).url, rejectHtml: true, headers: release.headers };
       if (kind === "manifest") throw new Error("Split manifests must be resolved by the queue.");
       // Buzzheavier's pages sit behind a Cloudflare check only a browser passes (403 to the app,
       // 2026-10-17): its file link is captured from the console's browser, as Datanodes' is.

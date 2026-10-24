@@ -7,15 +7,18 @@ import { useNavActions, useNavState } from '../state/nav.jsx';
 import { useQueryActive, useStoreActions, useStoreState } from '../state/store.jsx';
 
   var KEYS2 = {
-    search: "nav:search",
     discover: "nav:discover",
     browse: "nav:browse",
     homebrew: "nav:homebrew",
+    search: "nav:search",
     favorites: "nav:favorites",
     downloads: "nav:downloads",
-    files: "nav:files"
+    files: "nav:files",
+    settings: "nav:settings"
   };
-  var TABS = ["search", "discover", "browse", "homebrew", "favorites", "downloads", "files"];
+  var TABS = ["discover", "browse", "homebrew", "search", "favorites", "downloads", "files", "settings"];
+  // Sections that are their own screen rather than a view of the library.
+  var SCREENS = ["homebrew", "search", "favorites", "downloads", "files", "settings"];
   // The tab tracks the navigation entry that opened the library until its filters or sort change.
   var pinned = { section: "discover", filters: NO_FILTERS, sort: "newest" };
   function useShowLibrary() {
@@ -42,8 +45,8 @@ import { useQueryActive, useStoreActions, useStoreState } from '../state/store.j
     const nav = useNavActions();
     const { top } = useNavState();
     const show = useShowLibrary();
-    const underneath = top.name === "downloads" || top.name === "files" || top.name === "homebrew" ? top.name : sectionOf(store, queryActive);
-    const section = top.name === "search" ? "search" : top.name === "game" ? null : underneath;
+    const underneath = SCREENS.includes(top.name) ? top.name : sectionOf(store, queryActive);
+    const section = top.name === "game" ? null : underneath;
     const topName = (0, useRef)(top.name);
     topName.current = top.name;
     const [on] = (0, useState)(() => ({
@@ -52,12 +55,13 @@ import { useQueryActive, useStoreActions, useStoreState } from '../state/store.j
       discover: () => show(NO_FILTERS, "newest", "spotlight:cta", "discover"),
       browse: () => show(NO_FILTERS, "newest", void 0, "browse"),
       homebrew: () => topName.current !== "homebrew" && nav.push({ name: "homebrew" }, "nav:homebrew"),
-      favorites: () => show({ ...NO_FILTERS, wishlist: true }, "newest", void 0, "favorites"),
+      favorites: () => topName.current !== "favorites" && nav.push({ name: "favorites" }, "nav:favorites"),
+      settings: () => topName.current !== "settings" && nav.push({ name: "settings" }, "nav:settings"),
       downloads: () => topName.current !== "downloads" && nav.push({ name: "downloads" }, "nav:downloads"),
       files: () => topName.current !== "files" && nav.push({ name: "files" }, "nav:files")
     }));
     const step = (forward) => {
-      const current = top.name === "search" ? "search" : underneath;
+      const current = underneath;
       const next = TABS[TABS.indexOf(current) + (forward ? 1 : -1)];
       if (!next) return;
       if (next === "downloads" || next === "files" || next === "homebrew") {
