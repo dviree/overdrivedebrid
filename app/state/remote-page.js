@@ -75,6 +75,14 @@
         <button type="button" class="ghost" data-clear>Remove</button>
       </form>
       <p class="hint" data-state="premiumize"></p>
+      <h3>2Captcha (optional)</h3>
+      <form data-service="twocaptcha">
+        <input autocomplete="off" spellcheck="false" placeholder="API key from 2captcha.com/enterpage">
+        <button>Save</button>
+        <button type="button" class="ghost" data-clear>Remove</button>
+      </form>
+      <p class="hint" data-state="twocaptcha"></p>
+      <p class="hint">Only used when neither TorBox nor Premiumize takes a link and the host asks for a captcha (DataVaults, for one). Each captcha costs a little on your 2Captcha balance.</p>
       <label class="toggle"><input type="checkbox" id="auto"><span>Download what becomes ready in TorBox by itself<br><span class="hint">Add a link, magnet or NZB on torbox.app or below; the PS5 downloads it when TorBox has it, while Overdrive is open.</span></span></label>
       <p class="status" id="key-status"></p>
     </section>
@@ -174,7 +182,7 @@
   function render(state) {
     showApp();
     hasTorbox = Boolean(state.keys.torbox);
-    ["torbox", "premiumize"].forEach(function (service) {
+    ["torbox", "premiumize", "twocaptcha"].forEach(function (service) {
       var hosts = state.hosts && state.hosts[service];
       document.querySelector('[data-state="' + service + '"]').textContent = state.keys[service] ? "On (" + state.keys[service] + ")" + (hosts ? " · takes " + hosts + " hosts" : "") : "Not set";
     });

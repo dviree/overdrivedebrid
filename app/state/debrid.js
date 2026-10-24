@@ -1,18 +1,25 @@
 // ADDED: the debrid accounts, kept in settings.json beside the speed limit: a TorBox and a
 // Premiumize API key. With either set, every download goes through them (torbox.js, premiumize.js);
-// with none, downloads resolve as before. Typing a key with the controller is slow, so the TorBox
-// key is also read from a torbox.txt at the root of a USB drive, or pasted from a computer (remote.js).
+// with none, downloads resolve as before. A 2Captcha key (captcha.js) sits beside them. Typing a key
+// with the controller is slow, so the TorBox key is also read from a torbox.txt at the root of a USB
+// drive, or pasted from a computer (remote.js).
 
 import { useEffect, useState } from 'react';
 import { consoleRoots } from './roots.js';
 import { loadList, saveList } from './saved.js';
-import { FileSystem, Platform } from '@ps5-react/core';
+// The namespace, not named imports: the catalog's Node tests load this through paused-hosts.js with a
+// core that has no Platform.
+import * as core from '@ps5-react/core';
+
+  var { FileSystem } = core;
 
   var SETTINGS = "settings.json";
   // The services, in the order a link is tried.
   var SERVICES = {
     torbox: { name: "TorBox", setting: "torboxKey", site: "torbox.app/settings" },
-    premiumize: { name: "Premiumize", setting: "premiumizeKey", site: "premiumize.me/account" }
+    premiumize: { name: "Premiumize", setting: "premiumizeKey", site: "premiumize.me/account" },
+    // Not a debrid service: the key captcha.js solves a host's captcha with, when no account takes it.
+    twocaptcha: { name: "2Captcha", setting: "twocaptchaKey", site: "2captcha.com/enterpage", solver: true }
   };
   var valid = (value) => typeof value === "string" && /^[A-Za-z0-9_-]{8,128}$/.test(value);
   var settings = () => loadList(SETTINGS, "settings");
@@ -40,7 +47,7 @@ import { FileSystem, Platform } from '@ps5-react/core';
     listeners.add(listener);
     return () => listeners.delete(listener);
   }
-  var anyDebrid = () => Object.values(keys).some(Boolean);
+  var anyDebrid = () => Object.entries(keys).some(([service, key]) => key && !SERVICES[service].solver);
   function useDebridKeys() {
     const [value, setValue] = (0, useState)({ ...keys });
     (0, useEffect)(() => {
@@ -57,7 +64,7 @@ import { FileSystem, Platform } from '@ps5-react/core';
   var KEY_FILES = ["torbox.txt", "TORBOX.TXT", "torbox-key.txt"];
   // The first valid key in a key file on any drive, set as the key; the key found, or "".
   function importTorboxKey() {
-    const roots = Platform.OS === "ps5" ? consoleRoots(() => FileSystem.mounts()).filter((root2) => root2 !== "/data") : [FileSystem.dataDir];
+    const roots = core.Platform?.OS === "ps5" ? consoleRoots(() => FileSystem.mounts()).filter((root2) => root2 !== "/data") : [FileSystem.dataDir];
     for (const root2 of roots) {
       for (const name of KEY_FILES) {
         try {

@@ -72,12 +72,36 @@ import { Http } from '@ps5-react/core';
   }
   // How many hosts a service's list names, or 0 while it is unknown.
   var hostCount = (service) => lists[service]?.hosts?.length || 0;
+  // Hosts both services are known to take, for a key whose list is not read yet (the first start
+  // after it is set, or with no network): the catalog's paused hosts open for them at once.
+  var KNOWN = ["1fichier.com", "rapidgator.net", "mega.nz", "gofile.io"];
+  // Whether `service`'s account takes `url` for sure: its key is set and its list names the host
+  // (or, with no list yet, the host is one of KNOWN).
+  function takes(service, url) {
+    if (!getDebridKey(service)) return false;
+    let host2;
+    try {
+      host2 = webURL(url).host.replace(/^www\./, "");
+    } catch {
+      return false;
+    }
+    const list = lists[service];
+    const domains = list?.hosts?.length && list.key === getDebridKey(service).slice(-6) ? list.hosts : KNOWN;
+    return domains.some((domain) => isHost(host2, domain));
+  }
   // The accounts that can take a release's link (its first part's, for a set), for the game page.
   function accountsFor(release) {
     const first = release?.parts?.[0]?.sources?.[0] ?? release;
     const url = first?.browserUrl || first?.url;
     if (!url || first?.manifestUrl) return [];
-    return Object.keys(READERS).filter((service) => getDebridKey(service) && lists[service]?.hosts?.length && supports(service, url)).map((service) => SERVICES[service].name);
+    return Object.keys(READERS).filter((service) => takes(service, url)).map((service) => SERVICES[service].name);
   }
+  // The catalog's host keys (game.providers) as a domain, for the paused host filters.
+  var PROVIDER_DOMAINS = {
+    "1fichier": "1fichier.com", rapidgator: "rapidgator.net", mega: "mega.nz", gofile: "gofile.io", datavaults: "datavaults.co",
+    buzzheavier: "buzzheavier.com", ranoz: "ranoz.gg", transfer: "transfer.it", "rootz.so": "rootz.so", fuckingfast: "fuckingfast.co",
+    "1024terabox": "1024terabox.com", fileditchfiles: "fileditchfiles.me", datanodes: "datanodes.to", akirabox: "akirabox.com"
+  };
+  var providerTaken = (provider) => Boolean(PROVIDER_DOMAINS[provider]) && Object.keys(READERS).some((service) => takes(service, `https://${PROVIDER_DOMAINS[provider]}/`));
 
-export { accountsFor, hostCount, refreshHosts, supports };
+export { accountsFor, hostCount, providerTaken, refreshHosts, supports };

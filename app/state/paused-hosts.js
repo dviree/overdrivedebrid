@@ -6,6 +6,8 @@
 
 import { sourceKind, webURL } from './download-sources.js';
 import { vikingLinkPage } from './viking-capture.js';
+import { accountsFor, providerTaken } from './debrid-hosts.js';
+import { solverTakes } from './captcha.js';
 
   var PAUSE_BROWSER_HOSTS = true;
   // Taken out of the pause one at a time, as each is tested (2026-10-16: DataNodes and FileKeeper,
@@ -54,8 +56,10 @@ import { vikingLinkPage } from './viking-capture.js';
       return false;
     }
     if (kind === "vikingfile" || vikingLinkPage(release) || /archive\.org$/i.test(release.provider || "") || testing(release)) return false;
+    // ADDED: a host TorBox or Premiumize takes, or one the 2Captcha key passes, is open (debrid-hosts.js).
+    if (accountsFor(release).length || solverTakes(release)) return false;
     return kind === "browser" || kind === "datanodes" || kind === "buzzheavier";
   }
-  var pausedFilter = (host) => DISABLED_FILTERS.has(host) || PAUSE_BROWSER_HOSTS && PAUSED_FILTERS.has(host);
+  var pausedFilter = (host) => DISABLED_FILTERS.has(host) || PAUSE_BROWSER_HOSTS && PAUSED_FILTERS.has(host) && !providerTaken(host) && !solverTakes({ provider: host });
 
 export { pausedFilter, pausedSource };
