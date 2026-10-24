@@ -16,7 +16,7 @@
 namespace packages {
 namespace {
 struct Job {
-  std::string path, name;
+  std::string path, name, content_id;
   Snapshot snapshot;
   std::atomic<bool> cancelled{false};
   std::atomic<int> socket{-1};
@@ -37,7 +37,7 @@ void finish(Job& job, const char* state, const std::string& error = {}) {
 
 // The payload reports once a second; half a minute of silence means it is gone.
 int submit(Job& job, std::string& error) {
-  return payload_loader::send("pkg-installer.elf", "PKI1\n" + job.path + "\n" + job.name + "\n", 30'000'000, "Packages.install", error);
+  return payload_loader::send("pkg-installer.elf", "PKI2\n" + job.path + "\n" + job.name + "\n" + job.content_id + "\n", 30'000'000, "Packages.install", error);
 }
 
 // Lines: "ready", "started <content ID>", "p <written> <total> <status>", "ok", "fail <hex code> <reason>".
@@ -82,12 +82,13 @@ void run(std::shared_ptr<Job> job) {
 }
 }
 
-std::uint32_t install(std::string path, std::string name, std::string& error) {
+std::uint32_t install(std::string path, std::string name, std::string content_id, std::string& error) {
   std::lock_guard lock(guard);
   if (active) { error = "A package is already installing; poll its completion first."; return 0; }
   auto job = std::make_shared<Job>();
   job->path = std::move(path);
   job->name = std::move(name);
+  job->content_id = std::move(content_id);
   job->snapshot.id = next_id++;
   active = job;
   if (!job->worker.start([job] { run(job); }, 1024 * 1024)) {

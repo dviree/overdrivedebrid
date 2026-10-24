@@ -1,7 +1,7 @@
 // Copyright (C) 2026 half144 and PS5 React contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Additional attribution term: see LICENSE-ATTRIBUTION.
-// Native API contract (ABI v20) between the hosts and `@ps5-react/core`. The input actions hosts
+// Native API contract (ABI v21) between the hosts and `@ps5-react/core`. The input actions hosts
 // pass to `__ps5ReactDispatch` are a separate contract with its own version (runtime/js/input.js).
 //
 // host_api.cpp (shared) installs `globalThis.__ps5ReactNative` through
@@ -82,15 +82,17 @@
 //   lan.cancel(id)                 stops gathering; the replies so far are kept
 //   lan.poll()                     [{id, state, error, replies: [{address, port, body}]}] finished
 //                                  since the last poll; state 'completed' | 'failed' | 'cancelled'
-//   server.listen(port)            ABI v20; HTTP/1.1 on 0.0.0.0:port (1024..65535), up to 16 connections
+//   server.listen(port)            ABI v21; HTTP/1.1 on 0.0.0.0:port (1024..65535), up to 16 connections
 //                                  at once off-thread; headers 16 KiB, body 256 KiB; needs networking
 //   server.poll()                  [{id, method, path, address, contentType, body}] read since the last poll
 //   server.respond(id, status, contentType, body) true when sent; a request unanswered for 15 s gets 504
 //   server.port()                  the port listened on, 0 when closed
 //   server.address()               the console's IPv4 address on the network, or null
 //   server.close()                 stops listening
-//   packages.install(path, name)   task ID; installs a .pkg under /data, /mnt/usb or /mnt/ext through the
-//                                  console's install service (PS5 only, needs the payload loader on 9021)
+//   packages.install(path, name, contentId) task ID; installs a .pkg under /data, /mnt/usb or /mnt/ext through
+//                                  the console's install service (PS5 only, needs the payload loader on 9021);
+//                                  ABI v20: `path` may be an http(s) link the console downloads itself, with
+//                                  a PS4 package's `contentId`
 //   packages.cancel(id)            stops reporting; an install the console accepted carries on
 //   packages.poll()                state/error/contentId/status/written/total; consumes terminal results
 //   network.version()              transport version string
@@ -283,7 +285,7 @@ JSValue ps5_react_package_api(JSContext* ctx);
 JSValue ps5_react_browser_capture_api(JSContext* ctx);
 // ABI v9: UDP broadcast queries on the local network (lan.hpp).
 JSValue ps5_react_lan_api(JSContext* ctx);
-// ABI v20: an HTTP server on the local network (local_server.hpp).
+// ABI v21: an HTTP server on the local network (local_server.hpp).
 JSValue ps5_react_local_server_api(JSContext* ctx);
 // ABI v10: video playback (video_api.hpp).
 JSValue ps5_react_video_api(JSContext* ctx);
