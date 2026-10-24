@@ -3,14 +3,18 @@
 // sent to the console's downloads or to TorBox, the TorBox files and source lists downloaded and the
 // queue controlled (pause, resume, remove, order), with speed and time left.
 // A browser pairs first, as Orbit's phone control does: it sends the six-digit code the console shows
-// (Settings → Debrid, and a notification when a browser asks) and gets a token it sends with every
-// call after. Five wrong codes make a new one.
+// (Settings → Debrid, and a notification when a browser asks), or scans the QR code there, and gets a
+// token it sends with every call after. The page also shows which debrid accounts take each source,
+// starts a failed download again straight from the host, and manages the downloads and homebrew
+// folders.
 
 import { SERVICES, anyDebrid, getDebridKey, readSetting, saveSetting, setDebridKey } from './debrid.js';
-import { downloadQueue } from './downloads.js';
+import { accountsFor, hostCount } from './debrid-hosts.js';
+import { downloadQueue, storageRoots } from './downloads.js';
 import { PAGE } from './remote-page.js';
+import { sha256 } from './sha256.js';
 import { addSourceList, addToTorbox, listTorbox, queueLink, queueTorboxEntry, readSourceList, removeSourceList, setAutoDownload, sourceLists } from './torbox-queue.js';
-import { LocalServer, Notifications } from '@ps5-react/core';
+import { FileSystem, LocalServer, Notifications } from '@ps5-react/core';
 
   var PORT = 7878;
   var server = null;
@@ -19,56 +23,98 @@ import { LocalServer, Notifications } from '@ps5-react/core';
   var masked = (key) => key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : key;
   var failure = (status, message) => Object.assign(new Error(message), { status });
 
-  // Pairing. QuickJS has no crypto source, so the code and tokens mix Math.random with the clock:
-  // enough against guessing on a home network, where five misses also replace the code.
-  var MAX_TOKENS = 8;
+  // Pairing, as PS5 Library does it. QuickJS has no crypto source, so the code and tokens mix
+  // Math.random with the clock: enough against guessing on a home network, where a code lasts five
+  // minutes, is used once and five misses replace it. Only a SHA-256 of each browser's token is
+  // kept, with the browser's name, address and when it paired, so each one can be removed alone.
+  var MAX_DEVICES = 8;
+  var CODE_MS = 5 * 60 * 1e3;
   var randomDigits = (count) => Array.from({ length: count }, () => Math.floor(Math.random() * 10)).join("");
   var randomToken = () => Array.from({ length: 4 }, () => Math.floor(Math.random() * 2 ** 32).toString(16).padStart(8, "0")).join("") + Date.now().toString(16);
   var code = randomDigits(6);
+  var codeAt = Date.now();
   var misses = 0;
   var noticeAt = 0;
   var codeListeners = /* @__PURE__ */ new Set();
-  var tokens = () => readSetting("remoteTokens", []).filter((token) => typeof token === "string");
-  var pairingCode = () => code;
+  function storedDevices() {
+    const devices = readSetting("remoteDevices", null);
+    if (Array.isArray(devices)) return devices.filter((device) => typeof device?.hash === "string");
+    // Tokens an older build kept as they were become hashes, so browsers paired then stay paired.
+    const old = readSetting("remoteTokens", []).filter((token) => typeof token === "string");
+    const moved = old.map((token) => ({ hash: sha256(token), name: "Browser", address: "", at: Date.now() }));
+    saveDevices(moved);
+    if (old.length) saveSetting("remoteTokens", []);
+    return moved;
+  }
+  function saveDevices(devices) {
+    saveSetting("remoteDevices", devices.slice(-MAX_DEVICES));
+  }
+  var announce = () => {
+    for (const listener of codeListeners) listener(code);
+  };
   function newCode() {
     code = randomDigits(6);
+    codeAt = Date.now();
     misses = 0;
-    for (const listener of codeListeners) listener(code);
+    announce();
   }
+  function pairingCode() {
+    if (Date.now() - codeAt > CODE_MS) newCode();
+    return code;
+  }
+  // How long the code has left, in seconds, for the console's sheet.
+  var codeSecondsLeft = () => Math.max(0, Math.ceil((codeAt + CODE_MS - Date.now()) / 1e3));
   function onCodeChange(listener) {
     codeListeners.add(listener);
     return () => codeListeners.delete(listener);
   }
-  var pairedCount = () => tokens().length;
+  var deviceId = (device) => device.hash.slice(0, 12);
+  var pairedDevices = () => storedDevices().map((device) => ({ id: deviceId(device), name: device.name || "Browser", address: device.address || "", at: device.at || 0 }));
+  var pairedCount = () => storedDevices().length;
   function forgetPaired() {
-    saveSetting("remoteTokens", []);
+    saveDevices([]);
     newCode();
+  }
+  function forgetDevice(id) {
+    saveDevices(storedDevices().filter((device) => deviceId(device) !== id));
+    announce();
   }
   function showCode() {
     if (Date.now() - noticeAt < 30e3) return;
     noticeAt = Date.now();
     try {
-      Notifications.show("Overdrive pairing code", code);
+      Notifications.show("Overdrive pairing code", pairingCode());
     } catch (error2) {
       console.log(`[remote] code not shown: ${error2.message}`);
     }
   }
-  function pair(body) {
+  // A short name for the browser, from what it says it is.
+  function browserName(agent) {
+    const text = String(agent || "");
+    const browser = /Edg\//.test(text) ? "Edge" : /OPR\//.test(text) ? "Opera" : /Firefox\//.test(text) ? "Firefox" : /Chrome\//.test(text) ? "Chrome" : /Safari\//.test(text) ? "Safari" : "Browser";
+    const system = /iPhone|iPad/.test(text) ? "iOS" : /Android/.test(text) ? "Android" : /Windows/.test(text) ? "Windows" : /Mac OS X/.test(text) ? "macOS" : /Linux/.test(text) ? "Linux" : "";
+    return system ? `${browser} on ${system}` : browser;
+  }
+  function pair(body, request) {
     const given = String(body.code ?? "").replace(/\D/g, "");
     if (!given) {
       showCode();
       throw failure(400, "Enter the code shown on the PS5.");
     }
-    if (given !== code) {
+    if (given !== pairingCode()) {
       if (++misses >= 5) newCode();
       showCode();
-      throw failure(403, "That code is wrong. Check the code on the PS5 and try again.");
+      throw failure(403, "That code is wrong or has expired. Check the code on the PS5 and try again.");
     }
     const token = randomToken();
-    saveSetting("remoteTokens", [...tokens(), token].slice(-MAX_TOKENS));
+    saveDevices([...storedDevices(), { hash: sha256(token), name: browserName(body.agent).slice(0, 40), address: String(request.address || ""), at: Date.now() }]);
     newCode();
     return { token };
   }
+  var paired = (token) => {
+    const hash = sha256(token);
+    return storedDevices().some((device) => device.hash === hash);
+  };
   var tokenOf = (path) => /[?&]token=([0-9a-f]{16,64})\b/.exec(path)?.[1] ?? "";
   var queryOf = (path, name) => {
     const found = new RegExp(`[?&]${name}=([^&#]*)`).exec(path)?.[1];
@@ -100,6 +146,7 @@ import { LocalServer, Notifications } from '@ps5-react/core';
     return {
       keys: Object.fromEntries(Object.keys(SERVICES).map((service) => [service, getDebridKey(service) ? masked(getDebridKey(service)) : null])),
       debrid: anyDebrid(),
+      hosts: Object.fromEntries(Object.keys(SERVICES).map((service) => [service, hostCount(service)])),
       auto: readSetting("torboxAuto", false) === true,
       downloads: jobs().map((job2) => ({
         id: job2.id,
@@ -108,7 +155,9 @@ import { LocalServer, Notifications } from '@ps5-react/core';
         written: job2.written || 0,
         total: job2.total || null,
         bytesPerSecond: job2.bytesPerSecond || 0,
-        error: job2.error || ""
+        error: job2.error || "",
+        direct: job2.noDebrid === true,
+        accounts: job2.noDebrid ? [] : accountsFor(job2.release)
       }))
     };
   }
@@ -116,9 +165,47 @@ import { LocalServer, Notifications } from '@ps5-react/core';
     pause: (queue, id) => queue.pause(id),
     resume: (queue, id) => queue.resume(id),
     remove: (queue, id) => queue.remove(id),
+    direct: (queue, id) => queue.resumeDirect(id),
     up: (queue, id) => queue.move(id, -1),
     down: (queue, id) => queue.move(id, 1)
   };
+  // The file manager: the downloads and homebrew folders of each drive, nothing outside them. A file
+  // a download in the queue is still writing stays.
+  var FOLDERS = ["downloads", "homebrew"];
+  var DONE = ["downloaded", "file-downloaded", "installer-required", "installed", "extraction-required", "extracted", "failed", "paused"];
+  var folderRoots = () => storageRoots().flatMap((root2) => FOLDERS.map((folder) => `${root2}/${folder}`));
+  function inside(path, { self = false } = {}) {
+    const value = String(path || "");
+    if (!value.startsWith("/") || /(?:^|\/)\.\.?(?:\/|$)/.test(value) || value.includes("//")) throw failure(400, "That path is not allowed.");
+    const clean = value.replace(/\/+$/, "");
+    if (!folderRoots().some((root2) => clean.startsWith(`${root2}/`) || self && clean === root2)) throw failure(403, "Only the downloads and homebrew folders can be changed.");
+    return clean;
+  }
+  function busy(path) {
+    return jobs().some((job2) => !DONE.includes(job2.state) && [job2.downloadDestination, job2.artifact?.destination, job2.artifact?.directory].some((target) => target && (target === path || target.startsWith(`${path}/`) || path.startsWith(`${target}`))));
+  }
+  function listFiles(path) {
+    if (!path) return { path: "", entries: folderRoots().filter((root2) => FileSystem.exists(root2)).map((root2) => ({ name: root2, path: root2, isDirectory: true, size: 0, modified: 0 })) };
+    const folder = inside(path, { self: true });
+    const entries = FileSystem.readDir(folder).map((entry2) => ({ name: entry2.name, path: `${folder}/${entry2.name}`, isDirectory: entry2.isDirectory, size: entry2.size || 0, modified: entry2.modified || 0 }));
+    entries.sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name));
+    return { path: folder, up: folderRoots().includes(folder) ? "" : folder.slice(0, folder.lastIndexOf("/")), entries };
+  }
+  async function removeFile(path) {
+    const target = inside(path);
+    if (busy(target)) throw failure(409, "A download is still writing there. Pause or remove it first.");
+    if (!FileSystem.exists(target)) throw failure(404, "That file is gone. Reload the folder.");
+    await FileSystem.removeAsync(target);
+  }
+  function renameFile(path, name) {
+    const target = inside(path);
+    const value = String(name || "").trim();
+    if (!value || value.length > 200 || /[\\/\0]/.test(value) || value === "." || value === "..") throw failure(400, "That name is not allowed.");
+    if (busy(target)) throw failure(409, "A download is still writing there. Pause or remove it first.");
+    const next = `${target.slice(0, target.lastIndexOf("/"))}/${value}`;
+    if (FileSystem.exists(next)) throw failure(409, "Something there already has that name.");
+    FileSystem.rename(target, next);
+  }
   // What was last listed, so a download names an entry without the page sending its links back.
   var listed = /* @__PURE__ */ new Map();
   var lists = /* @__PURE__ */ new Map();
@@ -129,9 +216,9 @@ import { LocalServer, Notifications } from '@ps5-react/core';
     // A page on another site could post here from the same browser; only this page's own requests,
     // which say they are JSON, are taken.
     if (request.method === "POST" && !/^application\/json\b/i.test(request.contentType)) return reply(415, { error: "Send JSON." });
-    if (request.method === "POST" && path === "/api/pair") return reply(200, pair(bodyOf(request)));
+    if (request.method === "POST" && path === "/api/pair") return reply(200, pair(bodyOf(request), request));
     const token = tokenOf(request.path);
-    if (!token || !tokens().includes(token)) {
+    if (!token || !paired(token)) {
       showCode();
       return reply(401, { error: "Pair this browser first.", pair: true });
     }
@@ -143,12 +230,14 @@ import { LocalServer, Notifications } from '@ps5-react/core';
         return reply(200, { files });
       }
       if (path === "/api/lists") return reply(200, { lists: sourceLists() });
+      if (path === "/api/devices") return reply(200, { devices: pairedDevices(), you: sha256(token).slice(0, 12) });
+      if (path === "/api/files") return reply(200, listFiles(queryOf(request.path, "path")));
       if (path === "/api/lists/read") {
         const url = queryOf(request.path, "url");
         if (!sourceLists().includes(url)) throw failure(404, "That list was removed. Reload the page.");
         const entries = await readSourceList(url);
         lists.set(url, entries);
-        return reply(200, { entries });
+        return reply(200, { entries: entries.map((entry2) => ({ ...entry2, accounts: accountsFor({ url: entry2.url }) })) });
       }
       return reply(404, { error: "Not found." });
     }
@@ -167,6 +256,18 @@ import { LocalServer, Notifications } from '@ps5-react/core';
       if (!act) throw failure(400, "Unknown action.");
       await act(downloadQueue(), String(body.id || ""));
       return reply(200, state());
+    }
+    if (path === "/api/devices/remove") {
+      forgetDevice(String(body.id || ""));
+      return reply(200, { devices: pairedDevices() });
+    }
+    if (path === "/api/files/remove") {
+      await removeFile(body.path);
+      return reply(200, { ok: true });
+    }
+    if (path === "/api/files/rename") {
+      renameFile(body.path, body.name);
+      return reply(200, { ok: true });
     }
     if (path === "/api/download") return reply(200, { name: queueLink(body.link, body.name) });
     if (path === "/api/torbox/add") {
@@ -210,6 +311,11 @@ import { LocalServer, Notifications } from '@ps5-react/core';
       console.log(`[remote] not started: ${error2.message}`);
     }
   }
+  // The page's address with the code in it, for the QR code on the console: opening it pairs.
+  function pairingLink() {
+    const address = remoteAddress();
+    return address ? `${address}/#pair=${pairingCode()}` : null;
+  }
   // The address a computer opens, or null while the server is off or the console has no network.
   function remoteAddress() {
     if (!server) return null;
@@ -221,4 +327,4 @@ import { LocalServer, Notifications } from '@ps5-react/core';
     }
   }
 
-export { forgetPaired, onCodeChange, pairedCount, pairingCode, remoteAddress, startRemote };
+export { codeSecondsLeft, forgetDevice, forgetPaired, onCodeChange, pairedCount, pairedDevices, pairingCode, pairingLink, remoteAddress, startRemote };

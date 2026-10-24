@@ -9,6 +9,7 @@ import { createSourceResolver } from './download-sources.js';
 import { getDebridKey, getTorboxKey } from './debrid.js';
 import { createTorboxResolver } from './torbox.js';
 import { createPremiumizeResolver } from './premiumize.js';
+import { supports } from './debrid-hosts.js';
 import { createMockDownloadQueue } from './mock-download-queue.js';
 import { consoleRoots } from './roots.js';
 import { createShadowMountProbe } from './shadowmount.js';
@@ -33,7 +34,8 @@ import { Archives, BrowserCapture, DownloadFormats, Downloads, FileSystem, Http,
     sources: createTorboxResolver({
       http: Http,
       apiKey: getTorboxKey,
-      fallback: createPremiumizeResolver({ http: Http, apiKey: () => getDebridKey("premiumize"), fallback: createSourceResolver({ http: Http }) })
+      supports: (url) => supports("torbox", url),
+      fallback: createPremiumizeResolver({ http: Http, apiKey: () => getDebridKey("premiumize"), supports: (url) => supports("premiumize", url), fallback: createSourceResolver({ http: Http }) })
     }),
     packages: Packages,
     browserCapture: BrowserCapture,

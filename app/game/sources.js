@@ -2,6 +2,7 @@
 // reconstructed from the esbuild bundle in eboot.bin
 
 import { t } from '../i18n/core.js';
+import { accountsFor } from '../state/debrid-hosts.js';
 import { sourceKind } from '../state/download-sources.js';
 import { isPs5Package } from '../state/firmware.js';
 import { isPatchOnly } from '../state/release-sets.js';
@@ -61,7 +62,9 @@ import { formatBytes } from '../state/size.js';
       edition(release),
       release.version ? `v${release.version.replace(/^v/i, "")}` : null,
       isPatchOnly(release) ? t("sources.kind.patch") : KIND[release.format] && t(KIND[release.format]),
-      parts ? t("sources.parts", { count: parts }) : null
+      parts ? t("sources.parts", { count: parts }) : null,
+      // ADDED: the debrid accounts whose host lists take this source (debrid-hosts.js).
+      accountsFor(release).join(" + ") || null
     ].filter(Boolean).join(" \xB7 ");
     const reach = access(release);
     const speed = SPEED[release.provider.toLowerCase()];

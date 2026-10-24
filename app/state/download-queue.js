@@ -511,7 +511,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
             job2.options = formats.manifest(await response.json());
           } else {
             if (!job2.release.url && !job2.release.browserUrl) throw new Error("This release has no download URL.");
-            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" || sources.debrid?.() || job2.release.torbox ? await sources.resolve(job2.release, { signal, directURL: job2.directURL, onStatus: debridStatus(job2) }) : { url: webURL(job2.release.url).url };
+            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" || sources.debrid?.() && !job2.noDebrid || job2.release.torbox ? await sources.resolve(job2.release, { signal, directURL: job2.directURL, noDebrid: job2.noDebrid, onStatus: debridStatus(job2) }) : { url: webURL(job2.release.url).url };
             delete job2.phase;
             delete job2.debridProgress;
             job2.options = {
@@ -1085,7 +1085,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           const source2 = job2.release.parts[index].sources[part.sourceIndex || 0];
           job2.currentSource = source2;
           if (!part.options) {
-            const resolved = await sources.resolve(source2, { signal, directURL: job2.directURL, onStatus: debridStatus(job2) });
+            const resolved = await sources.resolve(source2, { signal, directURL: job2.directURL, noDebrid: job2.noDebrid, onStatus: debridStatus(job2) });
             delete job2.phase;
             delete job2.debridProgress;
             part.options = { ...resolved, expectedBytes: resolved.expectedBytes || source2.sizeBytes || void 0, sha256: source2.sha256 || void 0 };
@@ -1821,6 +1821,14 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         job2.error = "";
         change();
         pump();
+      },
+      // ADDED: "Download directly" on the computer page: the job starts over from the host itself,
+      // past TorBox and Premiumize, after a debrid service failed it.
+      resumeDirect(id) {
+        const job2 = find(id);
+        if (!["paused", "failed"].includes(job2.state) || active2?.job === job2) return;
+        job2.noDebrid = true;
+        return this.restart(id);
       },
       async restart(id) {
         const job2 = find(id);

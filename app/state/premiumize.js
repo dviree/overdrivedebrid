@@ -31,10 +31,10 @@ import { webURL } from './download-sources.js';
     if (!file) throw new PremiumizeRefused("Premiumize returned no file.");
     return { url: webURL(file.link).url, rejectHtml: true };
   }
-  function createPremiumizeResolver({ http, fallback, apiKey }) {
+  function createPremiumizeResolver({ http, fallback, apiKey, supports = () => true }) {
     async function resolve2(release, options = {}) {
       const key = apiKey();
-      if (!key || release.torbox || options.directURL || release.manifestUrl || !(release.browserUrl || release.url)) return fallback.resolve(release, options);
+      if (!key || release.torbox || options.noDebrid || options.directURL || release.manifestUrl || !(release.browserUrl || release.url) || !supports(release.browserUrl || release.url)) return fallback.resolve(release, options);
       try {
         return await directLink({ http, key, link: webURL(release.browserUrl || release.url).url, signal: options.signal });
       } catch (error2) {

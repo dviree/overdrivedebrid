@@ -5,6 +5,7 @@
 import { getTorboxKey, readSetting, saveSetting } from './debrid.js';
 import { webURL } from './download-sources.js';
 import { downloadQueue, freeBytes, storageRoots } from './downloads.js';
+import { parseSourceList } from './source-lists.js';
 import { createTorboxAccount } from './torbox.js';
 import { useEffect, useState } from 'react';
 import { Http } from '@ps5-react/core';
@@ -145,22 +146,7 @@ import { Http } from '@ps5-react/core';
     } catch {
       throw new Error("The list is not JSON.");
     }
-    const data = value?.DATA ?? value?.data;
-    if (!data || typeof data !== "object") throw new Error('The list has no "DATA" object.');
-    return Object.entries(data).slice(0, 5e3).flatMap(([link, item]) => {
-      try {
-        return [{
-          url: webURL(link).url,
-          name: String(item?.name || link.split("/").pop() || "").slice(0, 200),
-          sizeBytes: Number(item?.size) > 0 ? Number(item.size) : null,
-          region: item?.region ? String(item.region).slice(0, 8) : null,
-          version: item?.version ? String(item.version).slice(0, 16) : null,
-          minFirmware: item?.min_fw ? String(item.min_fw).slice(0, 16) : null
-        }];
-      } catch {
-        return [];
-      }
-    });
+    return parseSourceList(value);
   }
 
 export { addSourceList, addToTorbox, listTorbox, queueLink, queueTorboxEntry, readSourceList, removeSourceList, roomiest, setAutoDownload, sourceLists, startAutoDownload, useAutoDownload };

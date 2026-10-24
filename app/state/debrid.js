@@ -35,6 +35,11 @@ import { FileSystem, Platform } from '@ps5-react/core';
     saveSetting(entry2.setting, key);
     notify();
   }
+  // ADDED: for what follows a key outside React (the host lists of debrid-hosts.js).
+  function onDebridKeys(listener) {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  }
   var anyDebrid = () => Object.values(keys).some(Boolean);
   function useDebridKeys() {
     const [value, setValue] = (0, useState)({ ...keys });
@@ -73,4 +78,4 @@ import { FileSystem, Platform } from '@ps5-react/core';
   // A small setting of its own kind (a flag, a list), stored the same way.
   var readSetting = (name, fallback) => settings()[name] ?? fallback;
 
-export { SERVICES, anyDebrid, getDebridKey, getTorboxKey, importTorboxKey, readSetting, saveSetting, setDebridKey, setTorboxKey, useDebridKeys, useTorboxKey };
+export { SERVICES, anyDebrid, getDebridKey, onDebridKeys, getTorboxKey, importTorboxKey, readSetting, saveSetting, setDebridKey, setTorboxKey, useDebridKeys, useTorboxKey };
