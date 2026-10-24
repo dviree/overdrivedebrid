@@ -19,6 +19,8 @@ import { View } from '@ps5-react/core';
     browse: [HINT.select, HINT.top, HINT.sections],
     game: [HINT.select, HINT.back, HINT.favorite, HINT.sections],
     homebrew: [HINT.select, HINT.back, HINT.favorite, HINT.sections],
+    favorites: [HINT.select, HINT.back, HINT.favorite, HINT.sections],
+    settings: [HINT.select, HINT.back, HINT.sections],
     search: [HINT.select, HINT.favorite, HINT.clear, HINT.back, HINT.sections]
   };
   var registered2 = [];

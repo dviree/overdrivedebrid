@@ -3,7 +3,9 @@
 
 import { t } from '../i18n/core.js';
 
-  var STALE_PARTIAL = /partial file|checkpoint/i;
+  // "partial download" is the queue's own wording for a partial it adopted from an earlier session
+  // (issue #111): its Retry is the one that deletes it and starts over.
+  var STALE_PARTIAL = /partial (?:file|download)|checkpoint/i;
   var TASK = /^\w+\.\w+ \/.*?: /;
   var cause = (message) => message.replace(TASK, "");
   var INCOMPLETE_PART = /Volume (\d+) of \d+ looks incomplete/;

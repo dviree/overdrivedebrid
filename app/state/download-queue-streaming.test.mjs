@@ -9,6 +9,10 @@ const PS4_ID = 'UP0001-CUSA04013_00-TITANFALL2000000';
 const PS4_HEAD = '\x7FCNT' + '\x00\x01\xff\xfe'.repeat(15) + PS4_ID + '\x00'.repeat(64);
 const PS5_HEAD = '\x7FFIH' + '\x00'.repeat(120);
 const RAR_HEAD = 'Rar!\x1a\x07\x01\x00' + '\x00'.repeat(120);
+const SIGNED_LINK = 'https://asia-upload.04b3d96d52475741e6b10f97f0a84a16.r2.cloudflarestorage.com/rVl2jfZkC7' +
+  '?response-content-disposition=attachment%3Bfilename%3D%22GAME%20%5Bv01.01%5D%2094.7GB.pkg%22' +
+  '&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA%2Fauto%2Fs3%2Faws4_request' +
+  '&X-Amz-Date=20261025T000000Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host&X-Amz-Signature=' + 'a'.repeat(64);
 
 // The console's answer to a link: 'accepted' reports bytes, 'refused' fails, 'silent' says nothing.
 function harness({head = PS4_HEAD, status = 206, console: answer = 'accepted', platform = 'ps5', format = 'binary', redirect = false} = {}) {
@@ -57,7 +61,8 @@ function harness({head = PS4_HEAD, status = 206, console: answer = 'accepted', p
         cancel() { fail(new Error('cancelled')); },
       };
       setTimeout(() => {
-        if (answer === 'refused') return fail(new Error('Packages.install: The console refused the package. (0x80990085)'));
+        // The frame's message names the link first, as long as a signed CDN's can be.
+        if (answer === 'refused') return fail(new Error(`Packages.install ${SIGNED_LINK}: The console refused the package. (0x80990085)`));
         task.snapshot = {state: 'installing', written: 0};
         if (answer === 'accepted') {
           task.snapshot = {state: 'installing', written: 1 << 20, total: 1 << 30};
@@ -134,6 +139,24 @@ test('a link the console refuses downloads here instead, and is not offered agai
   assert.equal(fixture.enqueued.length, 1);
   assert.equal(job.streamTried, true);
   assert.equal(job.streamed, undefined);
+});
+
+// app.log cuts a line at 382 characters: a signed CDN link alone fills one, so the reason and its code
+// have to come without it, or the next report says nothing again.
+test('a refusal is logged with its reason and code, not the link in front of them', async () => {
+  const lines = [];
+  const original = console.log;
+  console.log = (...parts) => lines.push(parts.join(' '));
+  try {
+    await settled(harness({console: 'refused', format: 'pkg'}));
+  } finally {
+    console.log = original;
+  }
+  const refusal = lines.find(line => line.includes('the console refused the link:'));
+  assert.ok(refusal, 'the refusal is logged');
+  assert.equal(refusal.split('the console refused the link: ')[1], 'The console refused the package. (0x80990085)');
+  const whole = lines.find(line => line.includes(SIGNED_LINK));
+  assert.ok(!whole, `the link never reaches app.log whole: ${whole?.slice(0, 200)}`);
 });
 
 test('a source of a declared archive format is never probed', async () => {

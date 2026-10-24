@@ -7,6 +7,7 @@ import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
 import { AppRegistry, FocusScope, ReleaseImages, View } from '@ps5-react/core';
 import { BrowsePage } from './browse/BrowsePage.jsx';
+import { FavoritesScreen } from './browse/FavoritesScreen.jsx';
 import { DownloadsScreen } from './downloads/DownloadsScreen.jsx';
 import { FilesScreen } from './files/FilesScreen.jsx';
 import { GameScreen } from './game/index.jsx';
@@ -20,6 +21,7 @@ import { NavProvider, useIsImmersive, useNavActions, useNavState } from './state
 import { StoreFreeze, StoreProvider } from './state/store.jsx';
 import { Header } from './ui/Header.jsx';
 import { Legend } from './ui/Legend.jsx';
+import { SettingsScreen } from './ui/SettingsScreen.jsx';
 import { Splash } from './ui/Splash.jsx';
 import { UpdateDialog } from './ui/UpdateDialog.jsx';
 import { useInterfaceHaptics } from './ui/haptics.js';
@@ -38,6 +40,8 @@ import { VERSION } from './version.js';
     if (screen2.name === "game") return /* @__PURE__ */ (0, jsx)(GameScreen, { game: getGame(screen2.id), download: screen2.download, onBack: pop, onOpenGame: openCard });
     if (screen2.name === "downloads") return /* @__PURE__ */ (0, jsx)(DownloadsScreen, { onBack: pop, onBrowse: () => showLibrary(NO_FILTERS, "newest", "spotlight:cta", "discover"), onOpenGame: openGame });
     if (screen2.name === "files") return /* @__PURE__ */ (0, jsx)(FilesScreen, { onBack: pop });
+    if (screen2.name === "settings") return /* @__PURE__ */ (0, jsx)(SettingsScreen, { onBack: pop });
+    if (screen2.name === "favorites") return /* @__PURE__ */ (0, jsx)(FavoritesScreen, { onBack: pop, onBrowse: () => showLibrary(NO_FILTERS, "newest", "spotlight:cta", "discover") });
     return /* @__PURE__ */ (0, jsx)(SearchScreen, { onBack: pop, onOpenGame: openCard });
   }
   // The store front stays mounted under every other screen; while hidden it lets its images go (the
