@@ -1,4 +1,4 @@
-// ADDED: Premiumize (https://www.premiumize.me), beside TorBox (torbox.js). Its direct download
+// ADDED: Premiumize (https://www.premiumize.me), beside TorBox (debrid-torbox.js). Its direct download
 // (/api/transfer/directdl) turns a host link, or a torrent Premiumize already holds, into links on
 // its own servers; the largest file is the game. A link Premiumize won't take goes on to the app's
 // own resolver; a key it refuses fails the download, so a wrong key never passes unnoticed.

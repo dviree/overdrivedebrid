@@ -13,6 +13,7 @@ import { LIMITS, setSpeedLimit, useSpeedLimit } from '../state/speed-limit.js';
 import { setDeletePackages, useDeletePackages } from '../state/package-cleanup.js';
 import { setDownloadRoot, useDownloadRoot } from '../state/download-root.js';
 import { driveShortName, storageRoots } from '../state/downloads.js';
+import { DebridOverlay, DebridRow } from './DebridSetting.jsx';
 import { FocusScope, ScrollView, Text, View, useIsFocused } from '@ps5-react/core';
 
   var nameOf = (code) => LOCALES.find((locale2) => locale2.code === code).name;
@@ -161,6 +162,8 @@ import { FocusScope, ScrollView, Text, View, useIsFocused } from '@ps5-react/cor
                     /* @__PURE__ */ (0, jsx)(SpeedLimit, {}),
                     /* @__PURE__ */ (0, jsx)(DiskForDownloads, {}),
                     /* @__PURE__ */ (0, jsx)(DeletePackages, {}),
+                    // ADDED: the fork's debrid accounts (DebridSetting.jsx).
+                    /* @__PURE__ */ (0, jsx)(DebridRow, {}),
                     /* @__PURE__ */ (0, jsx)(SectionLabel, { title: t2("settings.controller") }),
                     /* @__PURE__ */ (0, jsx)(VibrationLevel, {})
                   ]
@@ -193,7 +196,8 @@ import { FocusScope, ScrollView, Text, View, useIsFocused } from '@ps5-react/cor
                   ]
                 })
               ]
-          })
+          }),
+          /* @__PURE__ */ (0, jsx)(DebridOverlay, {})
         ]
       })
     });

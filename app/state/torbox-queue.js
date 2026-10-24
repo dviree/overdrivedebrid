@@ -6,7 +6,7 @@ import { getTorboxKey, readSetting, saveSetting } from './debrid.js';
 import { webURL } from './download-sources.js';
 import { downloadQueue, freeBytes, storageRoots } from './downloads.js';
 import { parseSourceList } from './source-lists.js';
-import { createTorboxAccount } from './torbox.js';
+import { createTorboxAccount } from './debrid-torbox.js';
 import { useEffect, useState } from 'react';
 import { Http } from '@ps5-react/core';
 
