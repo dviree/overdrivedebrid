@@ -3,8 +3,8 @@ import {register} from 'node:module';
 import test from 'node:test';
 
 register(new URL('./download-queue-test-loader.mjs', import.meta.url), import.meta.url);
-const {createTorboxResolver} = await import('./torbox.js');
-const {createPremiumizeResolver} = await import('./premiumize.js');
+const {createTorboxResolver} = await import('./debrid-torbox.js');
+const {createPremiumizeResolver} = await import('./debrid-premiumize.js');
 
 const release = {url: 'https://unlisted.example/file', provider: 'unlisted.example'};
 const host = {resolve: async () => ({url: 'host'})};

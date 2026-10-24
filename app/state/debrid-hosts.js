@@ -57,8 +57,18 @@ import { Http } from '@ps5-react/core';
   }
   var refreshHosts = (options) => Promise.all(Object.keys(READERS).map((service) => readList(service, options)));
   var isHost = (host2, domain) => host2 === domain || host2.endsWith(`.${domain}`);
+  // A host on the home network (a qBittorrent's WebUI, a NAS): no debrid service can reach it.
+  var PRIVATE = /^(?:localhost|[^.]+|.+\.(?:local|lan|home|internal)|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|\[.*\])(?::\d+)?$/i;
+  function privateHost(url) {
+    try {
+      return PRIVATE.test(webURL(url).host);
+    } catch {
+      return false;
+    }
+  }
   // Whether `service` takes a link to `url`: true while its list is unknown or the key is newer.
   function supports(service, url) {
+    if (privateHost(url)) return false;
     const list = lists[service];
     const key = getDebridKey(service);
     if (!list?.hosts?.length || !key || list.key !== key.slice(-6)) return true;
