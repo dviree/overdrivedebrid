@@ -10,6 +10,7 @@ import { getDebridKey, getTorboxKey } from './debrid.js';
 import { createTorboxResolver } from './torbox.js';
 import { createPremiumizeResolver } from './premiumize.js';
 import { supports } from './debrid-hosts.js';
+import { createCaptchaResolver } from './captcha.js';
 import { createMockDownloadQueue } from './mock-download-queue.js';
 import { consoleRoots } from './roots.js';
 import { createShadowMountProbe } from './shadowmount.js';
@@ -30,12 +31,13 @@ import { Archives, BrowserCapture, DownloadFormats, Downloads, FileSystem, Http,
     notifications: Notifications,
     power: Power,
     linking: Linking,
-    // TorBox, then Premiumize, then the host itself: each passes on what it won't take.
+    // TorBox, then Premiumize, then the host itself (its captcha solved by 2Captcha when a key is
+    // set): each passes on what it won't take.
     sources: createTorboxResolver({
       http: Http,
       apiKey: getTorboxKey,
       supports: (url) => supports("torbox", url),
-      fallback: createPremiumizeResolver({ http: Http, apiKey: () => getDebridKey("premiumize"), supports: (url) => supports("premiumize", url), fallback: createSourceResolver({ http: Http }) })
+      fallback: createPremiumizeResolver({ http: Http, apiKey: () => getDebridKey("premiumize"), supports: (url) => supports("premiumize", url), fallback: createCaptchaResolver({ http: Http, fallback: createSourceResolver({ http: Http }) }) })
     }),
     packages: Packages,
     browserCapture: BrowserCapture,

@@ -92,6 +92,7 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
       remote ? /* @__PURE__ */ (0, jsx)(Note, { children: t2("torbox.codeLeft", { seconds: String(left) }) }) : null,
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:key", name: t2("torbox.key"), detail: key ? masked(key) : t2("torbox.keyMissing"), onPress: () => onEditKey("torbox") }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:premiumize", name: t2("torbox.premiumizeKey"), detail: keys.premiumize ? masked(keys.premiumize) : t2("torbox.premiumizeMissing"), onPress: () => onEditKey("premiumize") }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:twocaptcha", name: t2("torbox.twocaptchaKey"), detail: keys.twocaptcha ? masked(keys.twocaptcha) : t2("torbox.twocaptchaMissing"), onPress: () => onEditKey("twocaptcha") }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:usb", name: t2("torbox.usb"), detail: t2("torbox.usbDetail"), onPress: fromUsb }),
       key ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:auto", name: t2("torbox.auto"), detail: auto ? t2("torbox.autoOn") : t2("torbox.autoOff"), onPress: () => void setAutoDownload(!auto) }) : null,
       paired ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:forget", name: t2("torbox.forget"), detail: t2("torbox.forgetDetail", { count: paired }), onPress: () => {

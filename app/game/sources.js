@@ -34,6 +34,8 @@ import { formatBytes } from '../state/size.js';
       return "browser";
     }
     if (kind === "direct" || kind === "manifest") return "direct";
+    // ADDED: a link TorBox or Premiumize takes downloads by itself, with no browser.
+    if (accountsFor(first).length) return "direct";
     return kind === "browser" || kind === "datanodes" || kind === "unavailable" || GATED.has(kind) ? "browser" : "page";
   }
   // The firmware a source needs, from its label ("USA 10.xx Base", "10.xx BackPort 4.xx"): a backport
