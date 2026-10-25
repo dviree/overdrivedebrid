@@ -28,6 +28,7 @@ import { useInterfaceHaptics } from './ui/haptics.js';
 import { useInterfaceSounds } from './ui/sounds.js';
 import { useShowLibrary } from './ui/useSections.js';
 import { VERSION } from './version.js';
+import { BUILD } from './build.js';
 
   function Screen({ screen: screen2 }) {
     const { openGame, pop } = useNavActions();
@@ -108,6 +109,7 @@ import { VERSION } from './version.js';
       ? /* @__PURE__ */ (0, jsx)(LocaleProvider, { children: /* @__PURE__ */ (0, jsx)(StoreProvider, { children: /* @__PURE__ */ (0, jsx)(NavProvider, { children: /* @__PURE__ */ (0, jsx)(App, {}) }) }) })
       : /* @__PURE__ */ (0, jsx)(Splash, { onDone: () => setBooted(true) }) });
   }
-  // Which build wrote this session of app.log.
-  console.log(`[overdrive] version ${VERSION}`);
+  // Which build wrote this session of app.log: a draft rebuilt with the same version is otherwise
+  // indistinguishable from the one before it.
+  console.log(`[overdrive] version ${VERSION} build ${BUILD.commit}${BUILD.built ? ` ${BUILD.built}` : ""}`);
   AppRegistry.registerComponent("overdrive", () => () => /* @__PURE__ */ (0, jsx)(Boot, {}));

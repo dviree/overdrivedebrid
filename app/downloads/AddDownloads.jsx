@@ -42,9 +42,9 @@ import { FocusScope, Http, Text, View } from '@ps5-react/core';
   }
 
   var CARD = { width: 430, height: 124, flexDirection: "row", alignItems: "center", gap: 18, borderRadius: 16, paddingHorizontal: 20, backgroundColor: colors.surface };
-  function AddCard({ icon, title, detail, onPress, focusKey }) {
+  function AddCard({ icon, title, detail, onPress, focusKey, nextFocusDown }) {
     return /* @__PURE__ */ (0, jsxs)(View, {
-      focusKey, onPress,
+      focusKey, onPress, nextFocusDown,
       style: (state) => [CARD, state.focused ? { backgroundColor: colors.surface2 } : null],
       children: [
         /* @__PURE__ */ (0, jsx)(FocusRing, {}),
@@ -227,7 +227,7 @@ import { FocusScope, Http, Text, View } from '@ps5-react/core';
 
   // The strip and its dialogs. The strip belongs in the page's list, where it scrolls with it, and
   // the dialogs above everything: the screen asks for both.
-  function useAddDownloads({ onAdded } = {}) {
+  function useAddDownloads({ onAdded, down } = {}) {
     const t2 = useT();
     const services = useServices();
     const { focusLater } = useNavActions();
@@ -316,10 +316,12 @@ import { FocusScope, Http, Text, View } from '@ps5-react/core';
       /* @__PURE__ */ (0, jsx)(Text, { style: { paddingHorizontal: 6, fontFamily: "Inter-Regular", fontSize: 20, fontWeight: 600, color: colors.subtle, letterSpacing: 1 }, children: t2("add.title") }),
       // The focus ring is drawn 7 px outside the card, and the scroll view clips what it has no room
       // for: the first card sat flush with its left edge, so the ring was cut and looked broken.
+      // Down goes to the first row of the list, which the D-pad used to pass over for the panel on the
+      // right: it was the nearer thing below, not the one the player meant (2026-10-25).
       /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", gap: 14, paddingLeft: 12 }, children: [
-        /* @__PURE__ */ (0, jsx)(AddCard, { icon: "link", title: t2("add.link"), detail: t2("add.linkDetail"), focusKey: "downloads:add:link", onPress: () => setDialog({ kind: "link" }) }),
-        /* @__PURE__ */ (0, jsx)(AddCard, { icon: "qbittorrent", title: t2("add.torrent"), detail: services.address ? t2("add.torrentDetail") : t2("add.torrentSetup"), focusKey: "downloads:add:torrent", onPress: card }),
-        /* @__PURE__ */ (0, jsx)(AddCard, { icon: "layers", title: t2("add.debrid"), detail: t2("add.debridDetail"), focusKey: "downloads:add:debrid", onPress: () => setDialog({ kind: "services" }) })
+        /* @__PURE__ */ (0, jsx)(AddCard, { icon: "link", title: t2("add.link"), detail: t2("add.linkDetail"), focusKey: "downloads:add:link", nextFocusDown: down, onPress: () => setDialog({ kind: "link" }) }),
+        /* @__PURE__ */ (0, jsx)(AddCard, { icon: "qbittorrent", title: t2("add.torrent"), detail: services.address ? t2("add.torrentDetail") : t2("add.torrentSetup"), focusKey: "downloads:add:torrent", nextFocusDown: down, onPress: card }),
+        /* @__PURE__ */ (0, jsx)(AddCard, { icon: "layers", title: t2("add.debrid"), detail: t2("add.debridDetail"), focusKey: "downloads:add:debrid", nextFocusDown: down, onPress: () => setDialog({ kind: "services" }) })
       ] })
     ] });
 
