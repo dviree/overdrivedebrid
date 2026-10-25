@@ -363,7 +363,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
             await task.done;
             installed.push(path);
           } catch (error2) {
-            console.log(`[download-queue] install refused ${path}:`, consoleReason(error2.message));
+            console.log(`[download-queue] install refused ${path}: ${consoleFailure(error2.message)}`);
             if (!backport(path) || paths.every(backport)) throw error2;
           } finally {
             off();
@@ -397,6 +397,9 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
     var PS4_CONTENT_ID = /[A-Z]{2}\d{4}-[A-Z]{4}\d{5}_\d{2}-[A-Z0-9]{16}/;
     // How long the console has to start fetching the link before the app leaves it to the console.
     var STREAM_WATCH_MS = 3e4;
+    // How big the package is, from the range the host answered with: next to the internal drive's free
+    // space, it is the one line that says whether the console had room to take the link at all.
+    var packageSize = (headers) => Number(String(headers?.["content-range"] || "").split("/")[1]) || 0;
     async function pkgLink(job2, signal) {
       let url = job2.options.url;
       for (let hop = 0; hop < 5; hop++) {
@@ -407,24 +410,141 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           continue;
         }
         // A host that ignores the range sends the whole file: the console's downloader needs ranges too.
-        if (response.status !== 206) return null;
+        if (response.status !== 206) {
+          console.log(`[download-queue] ${job2.id}: not streamed, the host answered ${response.status} instead of a range`);
+          return null;
+        }
         const head = await response.text();
         const ps4 = head.startsWith("\x7FCNT"), ps5 = head.startsWith("\x7FFIH");
         const contentId = ps4 ? head.slice(0, 256).match(PS4_CONTENT_ID)?.[0] : "";
-        if (!ps4 && !ps5 || contentId === void 0) return null;
-        return { url, contentId, kind: ps4 ? "PS4" : "PS5" };
+        // Said out loud: a silent decline leaves "downloading it here instead" with no reason next to it.
+        if (!ps4 && !ps5) {
+          console.log(`[download-queue] ${job2.id}: not streamed, its first bytes are not a PKG`);
+          return null;
+        }
+        if (contentId === void 0) {
+          console.log(`[download-queue] ${job2.id}: not streamed, its PS4 header names no content ID`);
+          return null;
+        }
+        return { url, contentId, kind: ps4 ? "PS4" : "PS5", total: packageSize(response.headers), headers: response.headers };
       }
       return null;
     }
-    // The console's own words: its error names the link first ("Packages.install <url>: <reason>
-    // (0x<code>)"), and app.log cuts a line at 382 characters, so a signed CDN link filled the line and
-    // the reason went missing exactly when it was wanted (a Wolverine fPKG, 2026-10-25). The link is
-    // logged already, masked, on the line before.
-    var consoleReason = (message) => String(message || "").replace(/^Packages\.install \S+: /, "");
+    // Why the console said no: its code is the only thing that names the cause, and its error arrives as
+    // "Packages.install <url>: <reason> (0x<code>)". app.log cuts a line at 382 characters, so a signed
+    // CDN link filled the line and both the reason and the code went missing exactly when they were
+    // wanted (a Wolverine fPKG, 2026-10-25). The link is logged already, masked, on the line before.
+    var consoleFailure = (message) => {
+      const text = String(message || "");
+      const code = text.match(/\(0x([0-9a-zA-Z]+)\)/)?.[1];
+      // The frame says it as "Packages.install: <url>: <reason> (0x<code>)": the last piece before the
+      // code is the reason, and reading it from there keeps a signed CDN link out of app.log's 382
+      // characters, which are not enough for both.
+      const parts = text.replace(/\(0x[0-9a-zA-Z]+\)\s*$/, "").split(": ");
+      const reason = parts[parts.length - 1].replace(/https?:\/\/\S+/g, "").trim();
+      return `code=0x${code || "none"}${reason ? ` ${reason}` : ""}`;
+    };
+    // What the console's own install has to work with: it installs to the internal drive, not to this
+    // job's, and a full one is refused before anything is fetched.
+    var internalFree = () => {
+      try {
+        return formatBytes(fs.diskUsage("/data").free);
+      } catch {
+        return "unknown";
+      }
+    };
+    // How each shape is named in app.log, in the order linkShapes puts them.
+    var SHAPES = ["as it came", "with .pkg on the end", "with its query in sorted order"];
+    // The console's installer refuses some links before it has fetched anything (a signed S3 link from
+    // Vikingfile's storage, 2026-10-25) and the code it gives names no cause that can be looked up. So the
+    // same file is offered again in the shapes that could matter to its parser, cheapest first: the link
+    // as it came; the same with ".pkg" on the end, as a fragment the host never sees and no signature
+    // covers; and the same with its query in sorted order, which is what a signature canonicalises to.
+    // The first shape the console takes is the one it installs.
+    var linkShapes = (url, name) => {
+      const shapes = [url];
+      const plain = String(name || "package").replace(/\.[a-z0-9]+$/i, "").replace(/[^A-Za-z0-9._-]+/g, "-");
+      if (!url.includes("#")) shapes.push(`${url}#${plain}.pkg`);
+      const mark = url.indexOf("?");
+      if (mark > 0) {
+        const sorted = `${url.slice(0, mark)}?${url.slice(mark + 1).split("&").sort().join("&")}`;
+        if (sorted !== url) shapes.push(sorted);
+      }
+      return shapes;
+    };
+    // What the host answers: the console's refusal names no cause, and this is the response it would have
+    // had in front of it. A one-byte range, because a host that serves 85 GB will not answer a plain
+    // request at all ("response exceeds maxBytes", 2026-10-25).
+    var describeHost = async (job2, url) => {
+      const header = (response, key) => String(response?.headers?.[key] ?? "-").slice(0, 70);
+      try {
+        const response = await http.request(url, { headers: { Range: "bytes=0-0" }, maxBytes: 8 * 1024 });
+        console.log(`[download-queue] ${job2.id}: the host answers ${response.status} to a one-byte range, ${header(response, "content-type")}, ${header(response, "content-range") || header(response, "content-length")} bytes, ${header(response, "content-disposition")}`);
+        // A HEAD is what a downloader may ask before it fetches, and a pre-signed URL signs the method
+        // it was made for: a 403 here would be a refusal no shape of the link can cure (2026-10-25).
+        try {
+          const head = await http.request(url, { method: "HEAD", maxBytes: 8 * 1024 });
+          console.log(`[download-queue] ${job2.id}: the host answers ${head.status} to a HEAD, ${header(head, "content-length") || header(head, "content-range")} bytes, ${header(head, "etag")}`);
+        } catch (error2) {
+          console.log(`[download-queue] ${job2.id}: the HEAD failed: ${error2.message}`);
+        }
+        // Names only: a signed CDN's values alone are longer than the line app.log keeps.
+        const mark = url.indexOf("?");
+        if (mark > 0) console.log(`[download-queue] ${job2.id}: its query names ${url.slice(mark + 1).split("&").map(part => part.split("=")[0]).join(", ")}`);
+      } catch (error2) {
+        console.log(`[download-queue] ${job2.id}: a one-byte range of the host failed: ${error2.message}`);
+      }
+    };
+    // One ask of the console: it either takes the link or says no.
+    var handOver = async (job2, url, link) => {
+      let task;
+      // How long the console took to say no: an immediate no never tried to fetch, a late one did.
+      const asked = Date.now();
+      const accepted = await new Promise((resolve) => {
+        let settled = false, off = null, timer = null;
+        const settle = (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          off?.();
+          resolve(value);
+        };
+        try {
+          task = packages.install({ url, name: job2.title, contentId: link.contentId });
+        } catch (error2) {
+          console.log(`[download-queue] ${job2.id}: the console was not asked: ${error2.message}`);
+          settle(false);
+          return;
+        }
+        active2.task = task;
+        // Accepted once the console reports bytes, or has said nothing against it within the watch.
+        off = task.subscribe((progress) => {
+          if (progress.written > 0) settle(true);
+        });
+        if (settled) off();
+        task.done.then(() => settle(true), (error2) => {
+          const text = String(error2?.message || "");
+          const why = consoleFailure(text);
+          // The app stops the task itself once the console has taken the link: that is not a failure,
+          // and neither is a task closed without a code or a reason of its own.
+          if (!/cancel/i.test(text) && !(settled && why === "code=0xnone")) console.log(settled
+            ? `[download-queue] ${job2.id}: the install failed after the console took the link: ${why}`
+            : `[download-queue] ${job2.id}: the console refused the link after ${Date.now() - asked} ms: ${why}`);
+          settle(false);
+        });
+        timer = setTimeout(() => settle(task.snapshot.state === "installing"), STREAM_WATCH_MS);
+      });
+      return { task, accepted };
+    };
     async function streamed(job2, signal) {
       const options = job2.options;
       const format = String(job2.release.format || "binary").toLowerCase();
-      if (!canInstall() || job2.streamTried || job2.written || job2.output || !STREAMABLE.includes(format) || !options?.url || options.pieces || options.method === "POST" || Object.keys(options.headers || {}).length || fs.exists(`${job2.downloadDestination}.part`)) return false;
+      if (!canInstall() || job2.streamTried || job2.written || job2.output || !STREAMABLE.includes(format) || !options?.url || options.pieces || options.method === "POST" || Object.keys(options.headers || {}).length) return false;
+      // A part file means this job already began downloading here: the console would start from zero.
+      if (fs.exists(`${job2.downloadDestination}.part`)) {
+        console.log(`[download-queue] ${job2.id}: not streamed, it already has a part file here`);
+        return false;
+      }
       let link;
       try {
         link = await pkgLink(job2, signal);
@@ -439,36 +559,22 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       job2.written = 0;
       job2.message = "";
       change();
-      console.log(`[download-queue] ${job2.id}: a ${link.kind} PKG, handed to the console's downloads${link.contentId ? ` as ${link.contentId}` : ""}: ${linkForLog(link.url)}`);
-      let task;
-      const accepted = await new Promise((resolve) => {
-        let settled = false, off = null, timer = null;
-        const settle = (value) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          off?.();
-          resolve(value);
-        };
-        try {
-          task = packages.install({ url: link.url, name: job2.title, contentId: link.contentId });
-        } catch (error2) {
-          console.log(`[download-queue] ${job2.id}: the console was not asked: ${error2.message}`);
-          settle(false);
-          return;
-        }
-        active2.task = task;
-        // Accepted once the console reports bytes, or has said nothing against it within the watch.
-        off = task.subscribe((progress) => {
-          if (progress.written > 0) settle(true);
-        });
-        if (settled) off();
-        task.done.then(() => settle(true), (error2) => {
-          if (!settled) console.log(`[download-queue] ${job2.id}: the console refused the link: ${consoleReason(error2.message)}`);
-          settle(false);
-        });
-        timer = setTimeout(() => settle(task.snapshot.state === "installing"), STREAM_WATCH_MS);
-      });
+      console.log(`[download-queue] ${job2.id}: a ${link.kind} PKG${link.total ? ` of ${formatBytes(link.total)}` : ""}, handed to the console's downloads${link.contentId ? ` as ${link.contentId}` : ""}: ${linkForLog(link.url)}`);
+      // How the host served the bytes the console was offered: the same line for a link it takes and one
+      // it refuses is the only way to see what the two hosts do differently (2026-10-25).
+      console.log(`[download-queue] ${job2.id}: the host serves it as ${String(link.headers?.["content-type"] || "-").slice(0, 60)}, ${String(link.headers?.["content-disposition"] || "-").slice(0, 90)}`);
+      // The install goes to the internal drive: a full one is a refusal that looks like any other.
+      console.log(`[download-queue] ${job2.id}: internal drive free ${internalFree()}`);
+      const shapes = linkShapes(link.url, job2.release.filename || job2.title);
+      let task = null, accepted = false, taken = "";
+      for (let attempt = 0; attempt < shapes.length && !accepted && job2.state !== "pausing"; attempt++) {
+        if (attempt) console.log(`[download-queue] ${job2.id}: offered it again ${SHAPES[attempt]} to the console: ${linkForLog(shapes[attempt])}`);
+        const answer = await handOver(job2, shapes[attempt], link);
+        task = answer.task;
+        accepted = answer.accepted;
+        if (accepted) taken = SHAPES[attempt];
+        else if (attempt === 0) await describeHost(job2, shapes[0]);
+      }
       delete job2.streaming;
       // The console goes on by itself with what it took: the app stops listening, and waits until the
       // installer has let go, since it takes one package at a time (the next one, or this one's
@@ -485,6 +591,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         console.log(`[download-queue] ${job2.id}: downloading it here instead`);
         return false;
       }
+      console.log(`[download-queue] ${job2.id}: the console took it ${taken}`);
       job2.state = "installed";
       job2.streamed = true;
       job2.written = job2.total || 0;

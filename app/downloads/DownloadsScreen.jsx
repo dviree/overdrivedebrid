@@ -39,7 +39,7 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
       [count(COMPLETE), "completed"]
     ].filter(([n]) => n > 0).map(([n, key]) => t(`downloads.summary.${key}`, { count: n })).join(" \xB7 ");
   }
-  function Section({ title, jobs, first, handlers }) {
+  function Section({ title, jobs, first, handlers, links }) {
     const t2 = useT();
     if (!jobs.length) return null;
     return /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 18 }, children: [
@@ -51,6 +51,8 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
             job: job2,
             game: getGame(job2.gameId) ?? { title: job2.title, art: {} },
             autoFocus: job2 === first,
+            up: links.get(job2.id)?.up,
+            down: links.get(job2.id)?.down,
             run: handlers.run,
             onOpenGame: handlers.openGame,
             onFocusRow: handlers.focusRow
@@ -71,7 +73,6 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
   }
   function DownloadsScreen({ onBack, onBrowse, onOpenGame }) {
     const t2 = useT();
-    const add = useAddDownloads();
     const { jobs, error: error2 } = useJobs();
     (0, useEffect)(() => {
       try {
@@ -126,6 +127,11 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
     const stopped = jobs.filter((job2) => ["paused", "failed", "awaiting-browser"].includes(placed(job2)));
     const done = jobs.filter((job2) => COMPLETE.includes(placed(job2)));
     const first = active2[0] ?? stopped[0] ?? done[0];
+    // The rows in the order they are drawn, across the sections: Up and Down go from a row to the one
+    // above or below it in this list, and Down from the strip's cards goes to the first of them.
+    const order = [...active2, ...stopped, ...done];
+    const links = new Map(order.map((job2, index) => [job2.id, { up: order[index - 1], down: order[index + 1] }]));
+    const add = useAddDownloads({ down: order.length ? primaryKey(order[0].id) : EMPTY_KEY });
     return /* @__PURE__ */ (0, jsx)(FocusScope, { autoFocus: true, onBack: back2, onAction, children: /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1 }, children: [
       /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "flex-end", gap: 48, paddingHorizontal: 48, paddingTop: 48, paddingBottom: 36 }, children: [
         /* @__PURE__ */ (0, jsxs)(Text, { style: { width: 1356, fontFamily: "Inter-Regular", fontSize: 30, fontWeight: 600, color: "#f2f2f3", numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 42, letterSpacing: -0.75 }, children: [
@@ -140,9 +146,9 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
         /* @__PURE__ */ (0, jsx)(ScrollView, { style: { flex: 1 }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 60, paddingBottom: 60 }, children: [
           add.strip,
           jobs.length > 0 ? /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
-            /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.active", jobs: active2, first, handlers }),
-            /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.stopped", jobs: stopped, first, handlers }),
-            /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.completed", jobs: done, first, handlers })
+            /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.active", jobs: active2, first, handlers, links }),
+            /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.stopped", jobs: stopped, first, handlers, links }),
+            /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.completed", jobs: done, first, handlers, links })
           ] }) : /* @__PURE__ */ (0, jsx)(View, { style: { height: 480 }, children: /* @__PURE__ */ (0, jsx)(Empty, { error: error2, onBrowse }) })
         ] }) }),
         /* @__PURE__ */ (0, jsx)(SummaryPanel, { error: error2, onFocus: () => {

@@ -67,6 +67,14 @@ jobs:
           sed -i "s/^  var FORK = [0-9]*;/  var FORK = $GITHUB_RUN_NUMBER;/" app/fork.js
           grep -q "var FORK = $GITHUB_RUN_NUMBER;" app/fork.js
 
+      - name: Stamp the build
+        # app.log names the build that wrote it: a draft rebuilt with the same version is otherwise
+        # indistinguishable from the one before it. A local build keeps the committed "dev".
+        run: |
+          printf 'var BUILD = { commit: "%s", built: "%s" };\n\nexport { BUILD };\n' \
+            "${GITHUB_SHA:0:7}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > app/build.js
+          cat app/build.js
+
       - name: Build
         working-directory: ps5-react
         run: python3 tools/build_ps5.py --app-dir "$GITHUB_WORKSPACE/app" --llvm /usr/bin
