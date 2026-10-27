@@ -39,15 +39,15 @@ test('Real-Debrid unrestricts a host link, passes on what it refuses, and fails 
 
 const reply = (status, body, headers = {}) => ({status, ok: status < 300, headers, text: async () => JSON.stringify(body), json: async () => body});
 
-test('TorBox in the chain: waits out a 429, reuses a link it holds, and hands back its CDN link', async () => {
+test('TorBox in the chain: his checked flow (added, waited for, linked), and a 429 waited out', async () => {
   const {createTorboxResolver} = await import('./torbox.js');
   const calls = [];
   let throttled = false;
   const http = {request: async (url, options) => {
-    calls.push([options.method || 'GET', url.replace('https://api.torbox.app', '')]);
-    if (/webdl\/mylist\?bypass_cache=true$/.test(url)) {
+    calls.push([options.method || 'GET', url.replace('https://api.torbox.app', ''), options.body]);
+    if (/webdl\/createwebdownload$/.test(url)) {
       if (!throttled) { throttled = true; return reply(429, {}, {'retry-after': '1'}); }
-      return reply(200, {success: true, data: [{id: 5, original_url: 'https://1fichier.com/?abc', download_state: 'cached'}]});
+      return reply(200, {success: true, data: {webdownload_id: 5}});
     }
     if (/webdl\/mylist\?id=5$/.test(url)) return reply(200, {success: true, data: {id: 5, download_finished: true, files: [{id: 1, size: 10}, {id: 2, size: 99}]}});
     if (/webdl\/requestdl\?/.test(url)) return reply(200, {success: true, data: 'https://cdn.tb-cdn.st/dld/x'});
@@ -55,10 +55,11 @@ test('TorBox in the chain: waits out a 429, reuses a link it holds, and hands ba
   }};
   const waits = [];
   const resolver = createTorboxResolver({http, apiKey: () => 'k', wait: async (ms) => waits.push(ms), fallback: {resolve: async () => ({url: 'next'})}});
-  assert.deepEqual(await resolver.resolve({url: 'https://1fichier.com/?abc'}), {url: 'https://cdn.tb-cdn.st/dld/x', rejectHtml: true, expectedBytes: 99});
+  assert.deepEqual(await resolver.resolve({url: 'https://1fichier.com/?abc', filename: 'game.rar'}), {url: 'https://cdn.tb-cdn.st/dld/x', rejectHtml: true, expectedBytes: 99});
   assert.deepEqual(waits, [1000]);
-  assert.ok(!calls.some(([, url]) => url.includes('createwebdownload')), 'a held link is not added again');
-  assert.match(calls.at(-1)[1], /web_id=5&file_id=2$/);
+  assert.deepEqual(calls.map(([method, url]) => method + ' ' + url.split('?')[0]), ['POST /v1/api/webdl/createwebdownload', 'POST /v1/api/webdl/createwebdownload', 'GET /v1/api/webdl/mylist', 'GET /v1/api/webdl/requestdl']);
+  assert.equal(calls[1][2], `link=${encodeURIComponent('https://1fichier.com/?abc')}`);
+  assert.match(calls.at(-1)[1], /requestdl\?token=k&web_id=5&file_id=2$/);
 });
 
 test('TorBox declining a link lets the next service try; a refused key fails', async () => {
@@ -70,16 +71,16 @@ test('TorBox declining a link lets the next service try; a refused key fails', a
   await assert.rejects(createTorboxResolver({http: refused, apiKey: () => 'k', fallback: next}).resolve({url: 'https://odd.example/f'}), /rejected the API key/);
 });
 
-test('Premiumize in the chain: a held file at once, the key as apikey, the next service for the rest', async () => {
+test('Premiumize in the chain: his client, a held file at once, the next service for the rest', async () => {
   const {createPremiumizeResolver} = await import('./premiumize.js');
   const seen = [];
   const http = {request: async (url, options) => {
-    seen.push(options.body);
+    seen.push(options.headers.Authorization);
     return reply(200, {status: 'success', content: [{path: 'g/game.rar', size: 77, link: 'https://storage.premiumize.me/g/game.rar'}]});
   }};
   const next = {resolve: async () => ({url: 'next'})};
   assert.deepEqual(await createPremiumizeResolver({http, apiKey: () => 'PK', fallback: next}).resolve({url: 'https://rapidgator.net/file/1'}), {url: 'https://storage.premiumize.me/g/game.rar', rejectHtml: true, expectedBytes: 77});
-  assert.equal(new URLSearchParams(seen[0]).get('apikey'), 'PK');
+  assert.equal(seen[0], 'Bearer PK');
   const unsupported = {request: async () => reply(200, {status: 'error', message: 'This file is not supported.'})};
   assert.deepEqual(await createPremiumizeResolver({http: unsupported, apiKey: () => 'PK', fallback: next}).resolve({url: 'https://odd.example/f'}), {url: 'next'});
   const refused = {request: async () => reply(401, {status: 'error', message: 'Authentication failed.'})};
@@ -92,6 +93,7 @@ test('the TorBox account lists ready files and adds a link with the shared clien
   const http = {request: async (url, options) => {
     if (options.method === 'POST') { posted.push([url, options.body]); return reply(200, {success: true, data: {webdownload_id: 3}}); }
     if (/torrents\/mylist/.test(url)) return reply(200, {success: true, data: [{id: 1, name: 'Game', download_finished: true, created_at: '2026-10-01', files: [{id: 4, short_name: 'game.pkg', size: 5}]}]});
+    if (/torrents\/requestdl/.test(url)) return reply(200, {success: true, data: 'https://cdn.tb-cdn.st/dld/t'});
     return reply(200, {success: true, data: []});
   }};
   const account = createTorboxAccount({http, apiKey: () => 'k'});
@@ -99,6 +101,10 @@ test('the TorBox account lists ready files and adds a link with the shared clien
   assert.equal(entry.name, 'game.pkg');
   assert.equal(entry.ready, true);
   assert.equal(account.release(entry).torbox.file, 4);
+  // A file from the account is linked by his requestdl call.
+  const {createTorboxResolver} = await import('./torbox.js');
+  const linked = await createTorboxResolver({http, apiKey: () => 'k', fallback: {resolve: async () => ({url: 'next'})}}).resolve(account.release(entry));
+  assert.equal(linked.url, 'https://cdn.tb-cdn.st/dld/t');
   await account.add('https://1fichier.com/?x');
   assert.match(posted[0][0], /webdl\/createwebdownload$/);
   assert.equal(new URLSearchParams(posted[0][1]).get('link'), 'https://1fichier.com/?x');

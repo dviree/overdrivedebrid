@@ -12,8 +12,7 @@
 
 // MODIFIED (dviree/overdrivedebrid): the one Premiumize module, for pasted links and for this fork's
 // debrid chain alike: the fork's own client (debrid-premiumize.js) is folded in as
-// createPremiumizeResolver, on this client. Calls also carry the key as `apikey` (in a POST's form,
-// a GET's query), the parameter Premiumize's API documents, beside the bearer header.
+// createPremiumizeResolver, on this client, unchanged.
 
 import { webURL } from './download-sources.js';
 import { linkInput } from './link-download.js';
@@ -59,9 +58,7 @@ import { linkInput } from './link-download.js';
     if (!key) throw new Error("Premiumize is not set up.");
 
     async function call(path, { method = "GET", form, signal } = {}) {
-      // The key as `apikey` too: in the form of a POST, in the query of a GET.
-      if (form) form = `${form}&apikey=${encodeURIComponent(key)}`;
-      const response = await http.request(form ? API + path : `${API}${path}${path.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(key)}`, {
+      const response = await http.request(API + path, {
         method,
         signal,
         maxBytes: 1024 * 1024,
