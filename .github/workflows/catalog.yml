@@ -70,7 +70,14 @@ jobs:
         env:
           IGDB_CLIENT_ID: ${{ secrets.IGDB_CLIENT_ID }}
           IGDB_CLIENT_SECRET: ${{ secrets.IGDB_CLIENT_SECRET }}
-        run: python -P tools/vr-games.py --write --cache "$CACHES/enrich"
+        # MODIFIED (dviree/overdrivedebrid): without IGDB keys the tool reads no PS VR2 list and would
+        # clear every mark it holds, so the marks stay as they are until keys are set (Settings → Secrets).
+        run: |
+          if [ -z "$IGDB_CLIENT_ID" ] || [ -z "$IGDB_CLIENT_SECRET" ]; then
+            echo "no IGDB keys: the VR marks stay as they are"
+            exit 0
+          fi
+          python -P tools/vr-games.py --write --cache "$CACHES/enrich"
 
       - name: Save the caches
         if: always()
