@@ -1,5 +1,5 @@
 // ADDED: the debrid sheet, opened from Settings. It shows the address and pairing code for the
-// computer's browser (remote.js), holds the TorBox and Premiumize API keys (typed, or the TorBox key
+// computer's browser (remote.js), holds the TorBox, Premiumize and Real-Debrid API keys (typed, or the TorBox key
 // read from a torbox.txt on a USB drive), turns automatic TorBox downloads on, and lists what the
 // TorBox account holds, so a link added on torbox.app from a computer downloads with one press.
 
@@ -92,6 +92,7 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
       remote ? /* @__PURE__ */ (0, jsx)(Note, { children: t2("torbox.codeLeft", { seconds: String(left) }) }) : null,
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:key", name: t2("torbox.key"), detail: key ? masked(key) : t2("torbox.keyMissing"), onPress: () => onEditKey("torbox") }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:premiumize", name: t2("torbox.premiumizeKey"), detail: keys.premiumize ? masked(keys.premiumize) : t2("torbox.premiumizeMissing"), onPress: () => onEditKey("premiumize") }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:realdebrid", name: t2("torbox.realdebridKey"), detail: keys.realdebrid ? masked(keys.realdebrid) : t2("torbox.realdebridMissing"), onPress: () => onEditKey("realdebrid") }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:twocaptcha", name: t2("torbox.twocaptchaKey"), detail: keys.twocaptcha ? masked(keys.twocaptcha) : t2("torbox.twocaptchaMissing"), onPress: () => onEditKey("twocaptcha") }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:usb", name: t2("torbox.usb"), detail: t2("torbox.usbDetail"), onPress: fromUsb }),
       key ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:auto", name: t2("torbox.auto"), detail: auto ? t2("torbox.autoOn") : t2("torbox.autoOff"), onPress: () => void setAutoDownload(!auto) }) : null,
