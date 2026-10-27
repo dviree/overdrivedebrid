@@ -37,7 +37,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream "$UPSTREAM"
-          git fetch --no-tags upstream main
+          # MyLuxy/overdrive answers 404 since 2026-10-26 (deleted or made private). While it is gone
+          # there is nothing to merge: the run says so and passes, and merging resumes if it returns.
+          if ! git fetch --no-tags upstream main; then
+            echo "behind=0" >> "$GITHUB_OUTPUT"
+            echo "::notice::$UPSTREAM could not be fetched (gone or private): nothing to merge."
+            echo "Upstream \`$UPSTREAM\` could not be fetched (gone or private): nothing merged." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           behind=$(git rev-list --count HEAD..upstream/main)
           echo "behind=$behind" >> "$GITHUB_OUTPUT"
           echo "upstream=$(git rev-parse --short upstream/main)" >> "$GITHUB_OUTPUT"

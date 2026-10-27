@@ -229,7 +229,8 @@ BAD_URL = re.compile(r"[\s\\\x00-\x1f]")
 MAX_URL = 8192
 
 SOURCE = "pippo"
-RAW_BASE = "https://raw.githubusercontent.com/MyLuxy/overdrive/main"
+# MODIFIED (dviree/overdrivedebrid): MyLuxy/overdrive is gone; the covers are this fork's.
+RAW_BASE = "https://raw.githubusercontent.com/dviree/overdrivedebrid/main"
 COVERS_DIRNAME = "covers"
 
 # The counts of the 2026-10-15 input, which --check compares against. "fields"

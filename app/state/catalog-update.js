@@ -10,7 +10,9 @@ import { VERSION } from '../version.js';
 import { isRecord, readJSON } from './read-json.js';
 import { FileSystem, Http } from '@ps5-react/core';
 
-  var URL2 = "https://raw.githubusercontent.com/MyLuxy/overdrive/catalog/catalog-update.json";
+  // MODIFIED (dviree/overdrivedebrid): MyLuxy/overdrive is gone (404 since 2026-10-26); this fork's
+  // own catalog workflow (catalog.yml) publishes the nightly update.
+  var URL2 = "https://raw.githubusercontent.com/dviree/overdrivedebrid/catalog/catalog-update.json";
   var DIR = `${FileSystem.dataDir}/overdrive`;
   var FILE = `${DIR}/catalog-update.json`;
   var TAG = `${DIR}/catalog-update.etag`;
