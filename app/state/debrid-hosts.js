@@ -1,5 +1,5 @@
 // ADDED: which file hosts each debrid account takes, as PS5 Library shows it per source. TorBox
-// (/webdl/hosters) and Premiumize (/services/list) list them; the lists are read with the account's
+// (/webdl/hosters), Premiumize (/services/list) and Real-Debrid (/hosts/domains) list them; the lists are read with the account's
 // key, kept a day in settings.json, and read again when a key changes. A link to a host its list
 // leaves out skips that service instead of costing a refused request, and the game page names the
 // accounts that can take a source. While a list is unknown every host counts as taken.
@@ -19,7 +19,7 @@ import { Http } from '@ps5-react/core';
     const found = /* @__PURE__ */ new Set();
     for (const match of JSON.stringify(value ?? null).matchAll(DOMAIN)) {
       const domain = match[1].toLowerCase().replace(/^www\./, "");
-      if (!/\.(?:png|jpe?g|svg|webp|gif|ico|json|html?)$/.test(domain) && !/(?:^|\.)(?:torbox\.app|premiumize\.me)$/.test(domain)) found.add(domain);
+      if (!/\.(?:png|jpe?g|svg|webp|gif|ico|json|html?)$/.test(domain) && !/(?:^|\.)(?:torbox\.app|premiumize\.me|real-debrid\.com)$/.test(domain)) found.add(domain);
     }
     return [...found];
   }
@@ -35,6 +35,12 @@ import { Http } from '@ps5-react/core';
       const payload = await response.json();
       if (!response.ok || payload?.status === "error") throw new Error(payload?.message || `HTTP ${response.status}`);
       return domainsIn(payload?.directdl ?? payload);
+    },
+    // Real-Debrid's list needs no token: an array of domain names.
+    async realdebrid() {
+      const response = await Http.request("https://api.real-debrid.com/rest/1.0/hosts/domains", { maxBytes: 1024 * 1024, headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return domainsIn(await response.json());
     }
   };
   async function readList(service, { force = false } = {}) {

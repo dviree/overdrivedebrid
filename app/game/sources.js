@@ -34,7 +34,7 @@ import { formatBytes } from '../state/size.js';
       return "browser";
     }
     if (kind === "direct" || kind === "manifest") return "direct";
-    // ADDED: a link TorBox or Premiumize takes downloads by itself, with no browser.
+    // ADDED: a link a debrid account (TorBox, Premiumize, Real-Debrid) takes downloads by itself, with no browser.
     if (accountsFor(first).length) return "direct";
     return kind === "browser" || kind === "datanodes" || kind === "unavailable" || GATED.has(kind) ? "browser" : "page";
   }

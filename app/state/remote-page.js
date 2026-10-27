@@ -75,6 +75,13 @@
         <button type="button" class="ghost" data-clear>Remove</button>
       </form>
       <p class="hint" data-state="premiumize"></p>
+      <h3>Real-Debrid</h3>
+      <form data-service="realdebrid">
+        <input autocomplete="off" spellcheck="false" placeholder="API token from real-debrid.com/apitoken">
+        <button>Save</button>
+        <button type="button" class="ghost" data-clear>Remove</button>
+      </form>
+      <p class="hint" data-state="realdebrid"></p>
       <h3>2Captcha (optional)</h3>
       <form data-service="twocaptcha">
         <input autocomplete="off" spellcheck="false" placeholder="API key from 2captcha.com/enterpage">
@@ -94,7 +101,7 @@
         <button>Download to PS5</button>
         <button type="button" class="ghost" id="link-torbox">Add to TorBox only</button>
       </form>
-      <p class="hint">A file link downloads straight to the console, through TorBox or Premiumize when a key is set. A magnet link goes to TorBox; once it is ready, download it from the list below.</p>
+      <p class="hint">A file link downloads straight to the console, through TorBox, Premiumize or Real-Debrid when a key is set. A magnet link goes to TorBox; once it is ready, download it from the list below.</p>
       <p class="status" id="link-status"></p>
     </section>
 
@@ -182,7 +189,7 @@
   function render(state) {
     showApp();
     hasTorbox = Boolean(state.keys.torbox);
-    ["torbox", "premiumize", "twocaptcha"].forEach(function (service) {
+    ["torbox", "premiumize", "realdebrid", "twocaptcha"].forEach(function (service) {
       var hosts = state.hosts && state.hosts[service];
       document.querySelector('[data-state="' + service + '"]').textContent = state.keys[service] ? "On (" + state.keys[service] + ")" + (hosts ? " · takes " + hosts + " hosts" : "") : "Not set";
     });
@@ -197,7 +204,7 @@
       var actions = [];
       if (BUSY.indexOf(job.state) >= 0) actions.push(button("Pause", function () { queueAction(job.id, "pause"); }, true));
       if (job.state === "paused" || job.state === "failed") actions.push(button("Resume", function () { queueAction(job.id, "resume"); }));
-      if (job.state === "failed" && state.debrid && !job.direct) actions.push(button("Download directly", function () { if (confirm("Start " + job.title + " again straight from the host, past TorBox and Premiumize?")) queueAction(job.id, "direct"); }, true));
+      if (job.state === "failed" && state.debrid && !job.direct) actions.push(button("Download directly", function () { if (confirm("Start " + job.title + " again straight from the host, past the debrid accounts?")) queueAction(job.id, "direct"); }, true));
       if (i > 0) actions.push(button("↑", function () { queueAction(job.id, "up"); }, true));
       if (i < downloads.length - 1) actions.push(button("↓", function () { queueAction(job.id, "down"); }, true));
       actions.push(button("Remove", function () { if (confirm("Remove " + job.title + " from the queue?")) queueAction(job.id, "remove"); }, true));

@@ -1,6 +1,6 @@
 // ../pub-game-store/native/state/downloads.js
 // reconstructed from the esbuild bundle in eboot.bin
-// MODIFIED: sources resolve through TorBox and Premiumize when their API keys are set.
+// MODIFIED: sources resolve through TorBox, Premiumize and Real-Debrid when their API keys are set.
 
 import { getGame } from './catalog.js';
 import { driveName, driveShortName } from './drive-names.js';
@@ -11,6 +11,7 @@ import { createTorboxResolver } from './debrid-torbox.js';
 import { createPremiumizeResolver } from './debrid-premiumize.js';
 import { supports } from './debrid-hosts.js';
 import { createCaptchaResolver } from './captcha.js';
+import { createRealDebridResolver } from './debrid-realdebrid.js';
 import { createMockDownloadQueue } from './mock-download-queue.js';
 import { consoleRoots } from './roots.js';
 import { createShadowMountProbe } from './shadowmount.js';
@@ -31,13 +32,18 @@ import { Archives, BrowserCapture, DownloadFormats, Downloads, FileSystem, Http,
     notifications: Notifications,
     power: Power,
     linking: Linking,
-    // TorBox, then Premiumize, then the host itself (its captcha solved by 2Captcha when a key is
+    // TorBox, then Premiumize, then Real-Debrid, then the host itself (its captcha solved by 2Captcha when a key is
     // set): each passes on what it won't take.
     sources: createTorboxResolver({
       http: Http,
       apiKey: getTorboxKey,
       supports: (url) => supports("torbox", url),
-      fallback: createPremiumizeResolver({ http: Http, apiKey: () => getDebridKey("premiumize"), supports: (url) => supports("premiumize", url), fallback: createCaptchaResolver({ http: Http, fallback: createSourceResolver({ http: Http }) }) })
+      fallback: createPremiumizeResolver({ http: Http, apiKey: () => getDebridKey("premiumize"), supports: (url) => supports("premiumize", url), fallback: createRealDebridResolver({
+        http: Http,
+        apiKey: () => getDebridKey("realdebrid"),
+        supports: (url) => supports("realdebrid", url),
+        fallback: createCaptchaResolver({ http: Http, fallback: createSourceResolver({ http: Http }) })
+      }) })
     }),
     packages: Packages,
     browserCapture: BrowserCapture,

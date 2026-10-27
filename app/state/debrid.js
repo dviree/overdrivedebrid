@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { consoleRoots } from './roots.js';
 import { loadList, saveList } from './saved.js';
+import { services, setService } from './download-services.js';
 // The namespace, not named imports: the catalog's Node tests load this through paused-hosts.js with a
 // core that has no Platform.
 import * as core from '@ps5-react/core';
@@ -18,6 +19,7 @@ import * as core from '@ps5-react/core';
   var SERVICES = {
     torbox: { name: "TorBox", setting: "torboxKey", site: "torbox.app/settings" },
     premiumize: { name: "Premiumize", setting: "premiumizeKey", site: "premiumize.me/account" },
+    realdebrid: { name: "Real-Debrid", setting: "realdebridToken", site: "real-debrid.com/apitoken" },
     // Not a debrid service: the key captcha.js solves a host's captcha with, when no account takes it.
     twocaptcha: { name: "2Captcha", setting: "twocaptchaKey", site: "2captcha.com/enterpage", solver: true }
   };
@@ -26,20 +28,28 @@ import * as core from '@ps5-react/core';
   var keys = Object.fromEntries(Object.entries(SERVICES).map(([service, { setting }]) => [service, valid(settings()[setting]) ? settings()[setting] : ""]));
   var listeners = /* @__PURE__ */ new Set();
   var notify = () => {
-    for (const listener of listeners) listener({ ...keys });
+    const value = Object.fromEntries(Object.keys(SERVICES).map((service) => [service, getDebridKey(service)]));
+    for (const listener of listeners) listener(value);
   };
   function saveSetting(name, value) {
     const { [name]: _old, ...rest } = settings();
     saveList(SETTINGS, "settings", value === void 0 || value === "" || value === false ? rest : { ...rest, [name]: value });
   }
-  var getDebridKey = (service) => keys[service] ?? "";
+  // TorBox, Premiumize and Real-Debrid share their settings with upstream's pasted-link services
+  // (download-services.js): what either side saves is the key both use.
+  var SHARED = ["torbox", "premiumize", "realdebrid"];
+  function getDebridKey(service) {
+    const shared = SHARED.includes(service) ? services()[service] : null;
+    return shared != null ? valid(shared) ? shared : "" : keys[service] ?? "";
+  }
   function setDebridKey(service, value) {
     const entry2 = SERVICES[service];
     if (!entry2) throw new Error(`Unknown debrid service ${service}.`);
     const key = String(value ?? "").trim();
     if (key && !valid(key)) throw new Error(`That isn't a ${entry2.name} API key. Copy it from ${entry2.site}.`);
     keys[service] = key;
-    saveSetting(entry2.setting, key);
+    if (SHARED.includes(service)) setService(service, key);
+    else saveSetting(entry2.setting, key);
     notify();
   }
   // ADDED: for what follows a key outside React (the host lists of debrid-hosts.js).
@@ -47,9 +57,10 @@ import * as core from '@ps5-react/core';
     listeners.add(listener);
     return () => listeners.delete(listener);
   }
-  var anyDebrid = () => Object.entries(keys).some(([service, key]) => key && !SERVICES[service].solver);
+  var anyDebrid = () => Object.keys(SERVICES).some((service) => getDebridKey(service) && !SERVICES[service].solver);
   function useDebridKeys() {
-    const [value, setValue] = (0, useState)({ ...keys });
+    const current = () => Object.fromEntries(Object.keys(SERVICES).map((service) => [service, getDebridKey(service)]));
+    const [value, setValue] = (0, useState)(current);
     (0, useEffect)(() => {
       listeners.add(setValue);
       return () => {
