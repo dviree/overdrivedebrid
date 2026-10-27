@@ -6,11 +6,11 @@
 // anywhere else. Every call answers { success, error, detail, data }; only data is returned.
 //
 // MODIFIED (dviree/overdrivedebrid): the one TorBox module, for pasted links and for this fork's
-// debrid chain alike (downloads.js, torbox-queue.js). The fork's own client (debrid-torbox.js) is
-// folded in here: calls wait out TorBox's rate limit (429, Retry-After), a link TorBox already holds
-// is reused instead of added again, the account's files are listed for the Debrid sheet and the
-// computer page, and createTorboxResolver hands every catalog link to TorBox first. A failure that
-// is TorBox declining the link (TorboxRefused) lets the next service try; a refused key never does.
+// debrid chain alike (downloads.js, torbox-queue.js), on the flow checked against the live API. The
+// fork adds: calls wait out TorBox's rate limit (429, Retry-After), the account's files are listed
+// for the Debrid sheet and the computer page, and createTorboxResolver hands every catalog link to
+// TorBox first. A failure that is TorBox declining the link (TorboxRefused) lets the next service
+// try; a refused key never does.
 
 import { webURL } from './download-sources.js';
 import { linkInput } from './link-download.js';
@@ -138,7 +138,7 @@ import { linkInput } from './link-download.js';
 
     // Adds the link or magnet: a magnet is a torrent, anything else a web download. Both answer
     // with the item's id, which the status and the download link are asked for by.
-    async function create(input, { signal, reuse = false, name = "" } = {}) {
+    async function create(input, { signal } = {}) {
       const parsed = linkInput(input);
       if (parsed.kind === "magnet") {
         const data = await call(`${TORRENTS}/createtorrent`, { method: "POST", form: `magnet=${encodeURIComponent(parsed.value)}`, signal });
@@ -146,16 +146,7 @@ import { linkInput } from './link-download.js';
         if (!id) throw new Error("TorBox took the magnet but named no torrent.");
         return { kind: "torrent", id };
       }
-      // A link TorBox already holds (the same game asked for again) is reused, not added twice.
-      if (reuse) {
-        const held = await call(`${WEB}/mylist?bypass_cache=true`, { signal }).catch((error2) => {
-          if (error2 instanceof TorboxRefused) return null;
-          throw error2;
-        });
-        const item = (Array.isArray(held) ? held : []).find((entry) => entry?.original_url === parsed.value && !failed(entry));
-        if (item && Number.isSafeInteger(item.id)) return { kind: "web", id: item.id };
-      }
-      const data = await call(`${WEB}/createwebdownload`, { method: "POST", form: `link=${encodeURIComponent(parsed.value)}${name ? `&name=${encodeURIComponent(name)}` : ""}`, signal });
+      const data = await call(`${WEB}/createwebdownload`, { method: "POST", form: `link=${encodeURIComponent(parsed.value)}`, signal });
       const id = createdId("web", data);
       if (!id) throw new Error("TorBox took the link but named no download.");
       return { kind: "web", id };
@@ -194,8 +185,8 @@ import { linkInput } from './link-download.js';
     }
 
     /** Hands the input to TorBox and waits for the file; resolves to what addLink() needs. */
-    async function prepare(input, { onProgress, signal, reuse = false, name = "" } = {}) {
-      const created = await create(input, { signal, reuse, name });
+    async function prepare(input, { onProgress, signal } = {}) {
+      const created = await create(input, { signal });
       console.log(`[torbox] added ${created.kind} ${created.id}; waiting for the file`);
       const item = await fetched(created, { onProgress, signal });
       const file = pickFile(item.files);
@@ -217,8 +208,9 @@ import { linkInput } from './link-download.js';
   };
   async function requestLink(call, key, { kind, id, file }, signal) {
     const { request, param } = KINDS[kind];
-    const url = await call(`${request}?token=${encodeURIComponent(key)}&${param}=${encodeURIComponent(id)}&file_id=${encodeURIComponent(file)}&zip_link=false&redirect=false`, { signal });
-    if (typeof url !== "string") throw new Error("TorBox did not return a download link. Retry.");
+    // As createTorbox's own link(): the call checked against the live API.
+    const url = await call(`${request}?token=${encodeURIComponent(key)}&${param}=${id}&file_id=${file}`, { signal });
+    if (typeof url !== "string" || !/^https?:\/\//.test(url)) throw new Error("TorBox did not return a download link. Retry.");
     return { url: webURL(url).url, rejectHtml: true };
   }
   var entryName = (name) => baseName(name).replace(/[\x00-\x1f\\]/g, "").slice(-200) || "torbox-file";
@@ -278,7 +270,6 @@ import { linkInput } from './link-download.js';
   // servers (at once when it has it cached) and the console downloads it from TorBox's CDN, so hosts
   // behind a captcha or a wait come down at the connection's speed. What TorBox declines goes to the
   // next service (fallback); a host its list leaves out (supports, debrid-hosts.js) never reaches it.
-  var CHAIN_WAIT_MS = 6 * 60 * 60e3;
   function createTorboxResolver({ http, fallback, apiKey, supports = () => true, wait = defaultWait, now = Date.now }) {
     async function resolve2(release, options = {}) {
       const key = apiKey();
@@ -292,9 +283,9 @@ import { linkInput } from './link-download.js';
       if (!key || options.noDebrid || options.directURL || release.manifestUrl || !link || !supports(link)) return fallback.resolve(release, options);
       try {
         options.onStatus?.(null);
-        const prepared = await createTorbox({ http, key, wait, now, timeoutMs: CHAIN_WAIT_MS }).prepare(webURL(link).url, {
-          reuse: true,
-          name: release.filename,
+        // createTorbox's own flow as it was checked against the live API: added, waited for (its
+        // 30 minutes), then linked.
+        const prepared = await createTorbox({ http, key, wait, now }).prepare(webURL(link).url, {
           signal: options.signal,
           onProgress: ({ progress }) => options.onStatus?.(progress)
         });

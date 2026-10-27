@@ -12,6 +12,7 @@ import { useServices } from '../state/download-services.js';
 import { pairingLink } from '../state/remote.js';
 import { SERVICES, getDebridKey, setDebridKey, useDebridKeys } from '../state/debrid.js';
 import { URLDialog } from '../downloads/URLDialog.jsx';
+import { PhoneSetup } from '../downloads/PhoneSetup.jsx';
 import { Button2 } from './Button.jsx';
 import { FocusRing } from './FocusRing.jsx';
 import { Icon } from './Icon.jsx';
@@ -20,7 +21,10 @@ import { TorboxSheet } from './TorboxSheet.jsx';
 import { colors } from './colors.js';
 import { FocusScope, Text, View, useIsFocused } from '@ps5-react/core';
 
-  var open = { sheet: false, key: null };
+  // `key` is the service being set up: TorBox and Real-Debrid by MyLuxy's phone login (PhoneSetup,
+  // checked against the live APIs), Premiumize by the computer page, each with typing beside it;
+  // `typed` is the URL keyboard for a key.
+  var open = { sheet: false, key: null, typed: null };
   var listeners = /* @__PURE__ */ new Set();
   function set(next) {
     open = { ...open, ...next };
@@ -110,8 +114,23 @@ import { FocusScope, Text, View, useIsFocused } from '@ps5-react/core';
   }
   function DebridOverlay() {
     const t2 = useT();
-    const { sheet, key } = useOpen();
-    (0, useEffect)(() => () => set({ sheet: false, key: null }), []);
+    const { sheet, key, typed } = useOpen();
+    (0, useEffect)(() => () => set({ sheet: false, key: null, typed: null }), []);
+    if (typed) return /* @__PURE__ */ (0, jsx)(URLDialog, {
+      title: t2("settings.debridKeyTitle", { service: SERVICES[typed].name }),
+      detail: t2("settings.debridKeyDetail", { site: SERVICES[typed].site }),
+      initial: getDebridKey(typed),
+      confirmLabel: t2("settings.torboxKeyConfirm"),
+      submit: (value) => setDebridKey(typed, value),
+      onClose: () => set({ typed: null, key: null })
+    });
+    if (key === "torbox" || key === "realdebrid") return /* @__PURE__ */ (0, jsx)(PhoneSetup, {
+      service: key,
+      onField: () => set({ typed: key }),
+      onDone: () => set({ key: null }),
+      onCancel: () => set({ key: null })
+    });
+    if (key === "premiumize") return /* @__PURE__ */ (0, jsx)(PremiumizePhone, { onField: () => set({ typed: key }), onDone: () => set({ key: null }) });
     if (key) return /* @__PURE__ */ (0, jsx)(URLDialog, {
       title: t2("settings.debridKeyTitle", { service: SERVICES[key].name }),
       detail: t2("settings.debridKeyDetail", { site: SERVICES[key].site }),
