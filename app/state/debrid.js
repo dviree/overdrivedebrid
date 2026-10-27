@@ -1,5 +1,5 @@
 // ADDED: the debrid accounts, kept in settings.json beside the speed limit: a TorBox and a
-// Premiumize API key. With either set, every download goes through them (debrid-torbox.js, debrid-premiumize.js);
+// Premiumize API key. With either set, every download goes through them (torbox.js, premiumize.js, realdebrid.js);
 // with none, downloads resolve as before. A 2Captcha key (captcha.js) sits beside them. Typing a key
 // with the controller is slow, so the TorBox key is also read from a torbox.txt at the root of a USB
 // drive, or pasted from a computer (remote.js).

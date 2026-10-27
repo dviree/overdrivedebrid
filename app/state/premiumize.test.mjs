@@ -53,7 +53,7 @@ test('an uncached magnet becomes a transfer, is polled, then linked', async () =
       ? {status: 'error', message: 'This file is not cached yet.'}
       : {status: 'success', content: [ISO]}})},
     {match: /\/transfer\/create$/, answer: () => ({body: {status: 'success', id: 'T1', name: 'Debian'}})},
-    {match: /\/transfer\/list$/, answer: () => {
+    {match: /\/transfer\/list\?apikey=/, answer: () => {
       const index = Math.min(polls++, 1);
       return {body: {status: 'success', transfers: [[
         {id: 'T1', name: 'Debian', status: 'running', progress: 0.5, file_id: null, message: null},
@@ -100,7 +100,7 @@ test('a transfer Premiumize could not fetch fails with its message', async () =>
   const http = server([
     {match: /\/transfer\/directdl$/, answer: () => ({body: {status: 'error', message: 'not cached'}})},
     {match: /\/transfer\/create$/, answer: () => ({body: {status: 'success', id: 'T9', name: 'Broken'}})},
-    {match: /\/transfer\/list$/, answer: () => ({body: {status: 'success', transfers: [{id: 'T9', status: 'error', progress: 0, message: 'No peers available'}]}})},
+    {match: /\/transfer\/list\?apikey=/, answer: () => ({body: {status: 'success', transfers: [{id: 'T9', status: 'error', progress: 0, message: 'No peers available'}]}})},
   ]);
   await assert.rejects(keyed(http).prepare(MAGNET), /could not fetch it \(No peers available\)/);
 });
@@ -110,7 +110,7 @@ test('waiting too long says to come back, and keeps what Premiumize has', async 
   const http = server([
     {match: /\/transfer\/directdl$/, answer: () => ({body: {status: 'error', message: 'not cached'}})},
     {match: /\/transfer\/create$/, answer: () => ({body: {status: 'success', id: 'SLOW', name: 'Debian'}})},
-    {match: /\/transfer\/list$/, answer: () => ({body: {status: 'success', transfers: [{id: 'SLOW', status: 'running', progress: 0.2}]}})},
+    {match: /\/transfer\/list\?apikey=/, answer: () => ({body: {status: 'success', transfers: [{id: 'SLOW', status: 'running', progress: 0.2}]}})},
   ]);
   const service = createPremiumize({http, key: 'k', timeoutMs: 10, now: () => (clock += 6), wait: noWait});
   await assert.rejects(service.prepare(MAGNET), /still fetching it\. Add it again later/);

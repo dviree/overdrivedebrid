@@ -11,6 +11,10 @@
 // below follow the documented fields, and any difference shows up in the log lines as the call's
 // own status and error code.
 
+// MODIFIED (dviree/overdrivedebrid): also this fork's debrid chain's Real-Debrid step
+// (createRealDebridResolver, after TorBox and Premiumize), on this client.
+
+import { webURL } from './download-sources.js';
 import { linkInput } from './link-download.js';
 
   var API = "https://api.real-debrid.com/rest/1.0";
@@ -177,4 +181,25 @@ import { linkInput } from './link-download.js';
     return { addMagnet, status, prepare, unrestrict };
   }
 
-export { baseName, createRealDebrid, pickFile };
+  // The fork's debrid chain: a host link Real-Debrid unrestricts into a link on its own servers. A
+  // link it won't take goes on; a refused token or a locked account fails the download.
+  var REFUSED = /rejected the token|refused the account/i;
+  function createRealDebridResolver({ http, fallback, apiKey, supports = () => true }) {
+    async function resolve2(release, options = {}) {
+      const key = apiKey();
+      const link = release.browserUrl || release.url;
+      if (!key || release.torbox || options.noDebrid || options.directURL || release.manifestUrl || !link || !supports(link)) return fallback.resolve(release, options);
+      try {
+        const { url, sizeBytes } = await createRealDebrid({ http, key }).unrestrict(webURL(link).url, { signal: options.signal });
+        return { url: webURL(url).url, rejectHtml: true, ...sizeBytes > 0 ? { expectedBytes: sizeBytes } : {} };
+      } catch (error2) {
+        if (REFUSED.test(error2.message) || options.signal?.aborted) throw error2;
+        console.log(`[realdebrid] ${error2.message}; resolving ${release.provider || "the source"} directly`);
+        return fallback.resolve(release, options);
+      }
+    }
+    return { resolve: resolve2, debrid: () => Boolean(apiKey()) || Boolean(fallback.debrid?.()) };
+  }
+
+
+export { baseName, createRealDebrid, createRealDebridResolver, pickFile };

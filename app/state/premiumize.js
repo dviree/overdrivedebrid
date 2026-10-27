@@ -10,6 +10,12 @@
 // follow the documented fields, and any difference shows up in the log lines as the call's own
 // status and message.
 
+// MODIFIED (dviree/overdrivedebrid): the one Premiumize module, for pasted links and for this fork's
+// debrid chain alike: the fork's own client (debrid-premiumize.js) is folded in as
+// createPremiumizeResolver, on this client. Calls also carry the key as `apikey` (in a POST's form,
+// a GET's query), the parameter Premiumize's API documents, beside the bearer header.
+
+import { webURL } from './download-sources.js';
 import { linkInput } from './link-download.js';
 
   var API = "https://www.premiumize.me/api";
@@ -53,7 +59,9 @@ import { linkInput } from './link-download.js';
     if (!key) throw new Error("Premiumize is not set up.");
 
     async function call(path, { method = "GET", form, signal } = {}) {
-      const response = await http.request(API + path, {
+      // The key as `apikey` too: in the form of a POST, in the query of a GET.
+      if (form) form = `${form}&apikey=${encodeURIComponent(key)}`;
+      const response = await http.request(form ? API + path : `${API}${path}${path.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(key)}`, {
         method,
         signal,
         maxBytes: 1024 * 1024,
@@ -153,4 +161,29 @@ import { linkInput } from './link-download.js';
     return { create, direct, fetched, prepare };
   }
 
-export { baseName, createPremiumize, pickContent };
+  // The fork's debrid chain: after TorBox, a catalog link goes to Premiumize, which answers at once
+  // for a file it holds and otherwise fetches it as a transfer. Whatever Premiumize can't do lets the
+  // next service try; a refused key fails the download, so it never passes unnoticed.
+  var KEY_REFUSED = /rejected the API key/i;
+  function createPremiumizeResolver({ http, fallback, apiKey, supports = () => true }) {
+    async function resolve2(release, options = {}) {
+      const key = apiKey();
+      const link = release.browserUrl || release.url;
+      if (!key || release.torbox || options.noDebrid || options.directURL || release.manifestUrl || !link || !supports(link)) return fallback.resolve(release, options);
+      try {
+        options.onStatus?.(null);
+        const item = await createPremiumize({ http, key }).prepare(webURL(link).url, {
+          signal: options.signal,
+          onProgress: ({ progress }) => options.onStatus?.(progress)
+        });
+        return { url: webURL(item.url).url, rejectHtml: true, ...item.sizeBytes > 0 ? { expectedBytes: item.sizeBytes } : {} };
+      } catch (error2) {
+        if (KEY_REFUSED.test(error2.message) || options.signal?.aborted) throw error2;
+        console.log(`[premiumize] ${error2.message} Resolving ${release.provider || "the source"} with the next service`);
+        return fallback.resolve(release, options);
+      }
+    }
+    return { resolve: resolve2, debrid: () => Boolean(apiKey()) || Boolean(fallback.debrid?.()) };
+  }
+
+export { baseName, createPremiumize, createPremiumizeResolver, pickContent };
