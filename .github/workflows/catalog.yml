@@ -22,9 +22,9 @@ defaults:
 
 jobs:
   update:
-    # ADDED (dviree/overdrivedebrid): the catalog is MyLuxy/overdrive's; a fork merges it in instead
-    # of spending hours of Actions rebuilding it every night.
-    if: github.repository == 'MyLuxy/overdrive'
+    # MODIFIED (dviree/overdrivedebrid): MyLuxy/overdrive, which built the catalog, is gone (404 since
+    # 2026-10-26), so this fork builds it itself.
+    if: github.repository == 'dviree/overdrivedebrid'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
@@ -87,7 +87,11 @@ jobs:
         run: |
           tag=$(gh release view --repo "${{ github.repository }}" --json tagName --jq .tagName)
           git fetch -q --depth 1 origin "refs/tags/$tag:refs/tags/$tag"
-          python -P tools/catalog-update.py --base "$tag" --version "${tag#v}" --out "$RUNNER_TEMP/catalog-update.json"
+          # The app checks the update against version.js (1.0.10), without the fork's build number
+          # (v1.0.10.16, fork.js).
+          version="${tag#v}"
+          [ "$(echo "$version" | tr -cd . | wc -c)" -ge 3 ] && version="${version%.*}"
+          python -P tools/catalog-update.py --base "$tag" --version "$version" --out "$RUNNER_TEMP/catalog-update.json"
 
       # One commit on an orphan branch, replaced each night: the branch never grows. Nothing is pushed
       # when only the date changed.

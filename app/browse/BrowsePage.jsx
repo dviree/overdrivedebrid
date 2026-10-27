@@ -33,7 +33,8 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
       /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 21, color: "#8a8a94", lineHeight: 30 }, children: t2("browse.footer") })
     ] });
   }
-  var MIGRATE_GUIDE = "github.com/MyLuxy/overdrive";
+  // MODIFIED (dviree/overdrivedebrid): the guide is this fork's README; MyLuxy/overdrive is gone.
+  var MIGRATE_GUIDE = "github.com/dviree/overdrivedebrid";
   function FolderInstallNotice() {
     const t2 = useT();
     if (!useFolderInstall()) return null;
