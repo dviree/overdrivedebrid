@@ -336,11 +336,15 @@
     api("state").then(function (state) {
       render(state);
       refreshTorbox(); refreshLists(); refreshDevices(); openFolder(folder);
+      var field = focusOn && document.querySelector('form[data-service="' + focusOn + '"] input');
+      if (field) { field.scrollIntoView({ block: "center" }); field.focus(); focusOn = ""; }
       timers = [setInterval(refreshState, 2000), setInterval(refreshTorbox, 15000)];
     }).catch(function () {});
   }
   // The QR code on the console opens this page with its code after #pair=: that pairs at once.
   var scanned = /#pair=([0-9]{6})/.exec(location.hash);
+  // The console's Premiumize setup adds focus=premiumize: the page then opens at that key's field.
+  var focusOn = (/[#&]focus=([a-z0-9]+)/.exec(location.hash) || [])[1] || "";
   if (scanned) {
     history.replaceState(null, "", location.pathname);
     pairWith(scanned[1]);

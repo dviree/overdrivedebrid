@@ -5,6 +5,7 @@
 #include "image_loader.hpp"
 #include "archives.hpp"
 #include "packages.hpp"
+#include "pkg_proxy.hpp"
 #include "removals.hpp"
 #include "browser_capture.hpp"
 #include "lan.hpp"
@@ -187,6 +188,7 @@ struct Host {
     lan::stop();
     local_server::close();
   packages::stop();
+  pkg_proxy::stop();
   removals::stop();
   network::stop();
     video_layers::stop();

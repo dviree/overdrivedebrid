@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { consoleRoots } from './roots.js';
 import { loadList, saveList } from './saved.js';
-import { services, setService } from './download-services.js';
+import { onServices, services, setService } from './download-services.js';
 // The namespace, not named imports: the catalog's Node tests load this through paused-hosts.js with a
 // core that has no Platform.
 import * as core from '@ps5-react/core';
@@ -52,6 +52,8 @@ import * as core from '@ps5-react/core';
     else saveSetting(entry2.setting, key);
     notify();
   }
+  // A key saved by upstream's side (its phone login, its Settings page) reaches the fork's listeners.
+  onServices(() => notify());
   // ADDED: for what follows a key outside React (the host lists of debrid-hosts.js).
   function onDebridKeys(listener) {
     listeners.add(listener);
