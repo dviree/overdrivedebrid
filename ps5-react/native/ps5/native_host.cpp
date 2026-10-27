@@ -6,6 +6,7 @@
 #include "network.hpp"
 #include "archives.hpp"
 #include "packages.hpp"
+#include "pkg_proxy.hpp"
 #include "removals.hpp"
 #include "browser_capture.hpp"
 #include "lan.hpp"
@@ -685,6 +686,7 @@ bool run_proof() {
   lan::stop();
   local_server::close();
   packages::stop();
+  pkg_proxy::stop();
   removals::stop();
   network::stop();
   if (runtime) er_runtime_shutdown();

@@ -12,7 +12,7 @@ import { codeSecondsLeft, forgetDevice, forgetPaired, onCodeChange, pairedDevice
 import { formatBytes } from '../state/size.js';
 import { listTorbox, queueTorboxEntry, setAutoDownload, useAutoDownload } from '../state/torbox-queue.js';
 import { FocusRing } from './FocusRing.jsx';
-import { PairingQr } from './PairingQr.jsx';
+import { QRCode } from './QRCode.jsx';
 import { SideSheet } from './SideSheet.jsx';
 import { colors } from './colors.js';
 import { Text, View, useIsFocused } from '@ps5-react/core';
@@ -88,7 +88,7 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
     ].filter(Boolean).join(" \xB7 ");
     return /* @__PURE__ */ (0, jsx)(SideSheet, { title: t2("torbox.title"), subtitle: t2("torbox.subtitle"), onClose, children: /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 6, padding: 9, paddingBottom: 48 }, children: [
       remote ? /* @__PURE__ */ (0, jsx)(Note, { children: t2("torbox.remote", { url: remote, code }) }) : null,
-      remote ? /* @__PURE__ */ (0, jsx)(View, { style: { paddingHorizontal: 18, paddingVertical: 6 }, children: /* @__PURE__ */ (0, jsx)(PairingQr, { text: pairingLink() || remote }) }) : null,
+      remote ? /* @__PURE__ */ (0, jsx)(View, { style: { paddingHorizontal: 18, paddingVertical: 6 }, children: /* @__PURE__ */ (0, jsx)(QRCode, { text: pairingLink() || remote, size: 264 }) }) : null,
       remote ? /* @__PURE__ */ (0, jsx)(Note, { children: t2("torbox.codeLeft", { seconds: String(left) }) }) : null,
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:key", name: t2("torbox.key"), detail: key ? masked(key) : t2("torbox.keyMissing"), onPress: () => onEditKey("torbox") }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:premiumize", name: t2("torbox.premiumizeKey"), detail: keys.premiumize ? masked(keys.premiumize) : t2("torbox.premiumizeMissing"), onPress: () => onEditKey("premiumize") }),
