@@ -50,8 +50,14 @@ import { Http } from '@ps5-react/core';
     reading.add(service);
     try {
       const hosts = await READERS[service](key);
-      // An empty answer is no list: every host stays allowed rather than none.
+      // An empty answer is no list: every host stays allowed rather than none. Nor is one that names
+      // none of the hosts every service takes: a list read the wrong way would turn the service off
+      // for every link, so it counts as unknown and every host stays allowed.
       if (!hosts.length) return;
+      if (!KNOWN.some((domain) => hosts.includes(domain))) {
+        console.log(`[debrid-hosts] ${SERVICES[service].name}: the list names none of ${KNOWN.join(", ")}; not used`);
+        return;
+      }
       lists = { ...lists, [service]: { at: Date.now(), key: key.slice(-6), hosts } };
       saveSetting(SETTING, lists);
       console.log(`[debrid-hosts] ${SERVICES[service].name}: ${hosts.length} hosts`);
@@ -77,7 +83,7 @@ import { Http } from '@ps5-react/core';
     if (privateHost(url)) return false;
     const list = lists[service];
     const key = getDebridKey(service);
-    if (!list?.hosts?.length || !key || list.key !== key.slice(-6)) return true;
+    if (!usable(list) || !key || list.key !== key.slice(-6)) return true;
     let host2;
     try {
       host2 = webURL(url).host.replace(/^www\./, "");
@@ -91,6 +97,9 @@ import { Http } from '@ps5-react/core';
   // Hosts both services are known to take, for a key whose list is not read yet (the first start
   // after it is set, or with no network): the catalog's paused hosts open for them at once.
   var KNOWN = ["1fichier.com", "rapidgator.net", "mega.nz", "gofile.io"];
+  // A kept list is used only if it names one of those: one saved by an earlier build that read it
+  // the wrong way is ignored rather than turning the service off.
+  var usable = (list) => Boolean(list?.hosts?.length) && KNOWN.some((domain) => list.hosts.includes(domain));
   // Whether `service`'s account takes `url` for sure: its key is set and its list names the host
   // (or, with no list yet, the host is one of KNOWN).
   function takes(service, url) {
@@ -102,7 +111,7 @@ import { Http } from '@ps5-react/core';
       return false;
     }
     const list = lists[service];
-    const domains = list?.hosts?.length && list.key === getDebridKey(service).slice(-6) ? list.hosts : KNOWN;
+    const domains = usable(list) && list.key === getDebridKey(service).slice(-6) ? list.hosts : KNOWN;
     return domains.some((domain) => isHost(host2, domain));
   }
   // The accounts that can take a release's link (its first part's, for a set), for the game page.
