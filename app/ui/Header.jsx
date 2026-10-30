@@ -14,7 +14,7 @@ import { Logo } from './Logo.jsx';
 import { NavItem } from './NavItem.jsx';
 import { NavPill, useNavLayouts } from './NavPill.jsx';
 import { useSections } from './useSections.js';
-import { VERSION } from '../version.js';
+import { FORK_VERSION } from '../fork.js';
 import { FocusScope, Text, View } from '@ps5-react/core';
 
   var BADGE = /* @__PURE__ */ (0, jsx)(DownloadsBadge, { inset: 14 });
@@ -60,7 +60,8 @@ import { FocusScope, Text, View } from '@ps5-react/core';
                 /* @__PURE__ */ (0, jsx)(Logo, { enlarged: true }),
                 /* @__PURE__ */ (0, jsx)(Text, {
                   style: { position: "absolute", left: 66, top: 39, fontFamily: "Inter-Regular", fontSize: 16, lineHeight: 18, color: "#8a8a94" },
-                  children: "v" + VERSION
+                  // MODIFIED (dviree/overdrivedebrid): the fork's build too (v1.0.10.26), so a report says which.
+                  children: "v" + FORK_VERSION
                 })
               ] })
             ]

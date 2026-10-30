@@ -15,7 +15,7 @@ import { Button2 } from './Button.jsx';
 import { ProgressBar } from './ProgressBar.jsx';
 import { ShimmerText } from './ShimmerText.jsx';
 import { px } from './scale.js';
-import { VERSION } from '../version.js';
+import { FORK_VERSION } from '../fork.js';
 import { BackHandler, FocusScope, Image, Text, View } from '@ps5-react/core';
 
   var CLOSE_DELAY_MS = 2e3;
@@ -67,7 +67,7 @@ import { BackHandler, FocusScope, Image, Text, View } from '@ps5-react/core';
           /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 18 }, children: [
             /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 20, color: "#8a8a94", letterSpacing: 3 }, children: label }),
             /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 66, fontWeight: 600, color: "#f2f2f3", letterSpacing: -1.65 }, children: `v${update.version}` }),
-            /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 23, color: "#a3a3ab" }, children: `v${VERSION}  \u2192  v${update.version}` })
+            /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 23, color: "#a3a3ab" }, children: `v${FORK_VERSION}  \u2192  v${update.version}` })
           ] }),
           state ? null : /* @__PURE__ */ (0, jsx)(View, { style: { width: 690, gap: 12 }, children: paragraphs.map((text) => /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 24, color: "#a3a3ab", numberOfLines: 4, ellipsizeMode: "tail", lineHeight: 36 }, children: text }, text)) }),
           status ? /* @__PURE__ */ (0, jsx)(View, { focusable: true, children: /* @__PURE__ */ (0, jsx)(ShimmerText, { textStyle: STATUS2, children: status }) }) : installed ? /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", gap: 18 }, children: [
