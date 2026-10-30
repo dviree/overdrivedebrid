@@ -2,8 +2,13 @@
 
 ## Always use Trail-Code
 
-The owner wants Trail-Code (`trail`, also answering as `graft`) used for every look into this
-code. Before reading files whole or reaching for grep:
+**Every turn starts with Trail-Code. No exceptions.** The owner has said so plainly and more than
+once: no answer, plan, status check or step about this code, its builds or the app without a
+`trail` command first in that same turn. A question that seems to need no code (a build's status,
+a link) still starts with one, for instance `trail ask` on what the question touches.
+
+Trail-Code (`trail`, also answering as `graft`) is used for every look into this code. Before
+reading files whole or reaching for grep:
 
 - `trail ask "<what you need>" --source` to find where something lives, with the code inline
 - `trail callers <symbol>` to see who calls a function (`--direction out` for what it calls)
