@@ -206,6 +206,23 @@ import { FileSystem, LocalServer, Notifications } from '@ps5-react/core';
     if (FileSystem.exists(next)) throw failure(409, "Something there already has that name.");
     FileSystem.rename(target, next);
   }
+  // app.log, for a player to copy into a bug report from the computer: the last session's lines
+  // (crash_log.cpp keeps it in the title's data folder), with every key and token in it hidden.
+  var LOG_FILES = ["/data/ps5-react/PPSA99058/app.log", `${FileSystem.dataDir}/app.log`];
+  var LOG_TAIL = 400 * 1024;
+  var redact = (text) => text.replace(/((?:token|apikey|api_key|key|client_secret|code)=)[^&\s"']+/gi, "$1***").replace(/(Bearer\s+)[A-Za-z0-9._~+\/=-]+/gi, "$1***");
+  function appLog() {
+    for (const path of LOG_FILES) {
+      try {
+        if (!FileSystem.exists(path)) continue;
+        const text = String(FileSystem.readFile(path));
+        return { path, text: redact(text.length > LOG_TAIL ? text.slice(-LOG_TAIL) : text) };
+      } catch (error2) {
+        return { path, text: `app.log could not be read: ${error2.message}` };
+      }
+    }
+    return { path: "", text: "No app.log found." };
+  }
   // What was last listed, so a download names an entry without the page sending its links back.
   var listed = /* @__PURE__ */ new Map();
   var lists = /* @__PURE__ */ new Map();
@@ -230,6 +247,7 @@ import { FileSystem, LocalServer, Notifications } from '@ps5-react/core';
         return reply(200, { files });
       }
       if (path === "/api/lists") return reply(200, { lists: sourceLists() });
+      if (path === "/api/log") return reply(200, appLog());
       if (path === "/api/devices") return reply(200, { devices: pairedDevices(), you: sha256(token).slice(0, 12) });
       if (path === "/api/files") return reply(200, listFiles(queryOf(request.path, "path")));
       if (path === "/api/lists/read") {
