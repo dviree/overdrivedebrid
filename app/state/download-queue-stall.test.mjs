@@ -227,3 +227,30 @@ test('a new link that brings nothing back either is asked for once, then the gat
   assert.ok(lines.some(line => line.includes('a new link did not bring it back; waiting')), lines.join('\n'));
   assert.equal(lines.filter(line => line.includes('a new link instead of waiting')).length, 1);
 });
+
+// dviree/overdrivedebrid: a TorBox download (tb-cdn.st) sat at 0 MB/s about a minute in, for good:
+// its node was neither capped nor watched. Now it starts over like the gateways above.
+test('a debrid download at 0 MB/s starts over instead of sitting there', async () => {
+  const machine = console_();
+  let transfers = 0, resolved = 0;
+  const enqueue = () => transfer((emit, finish) => {
+    if (++transfers === 1) return setInterval(() => emit({state: 'downloading', received: 100, completedBytes: 0, total: 1000}), 5).unref();
+    let received = 0;
+    return setInterval(() => {
+      received += 100;
+      if (received >= 1000) finish();
+      else emit({state: 'downloading', received, completedBytes: 0, total: 1000});
+    }, 5).unref();
+  });
+  const formats = {artifact: (item, where) => ({directory: where + '/downloads/packages', destination: where + '/downloads/packages/' + item.filename, nextAction: 'installer-required'})};
+  const queue = createDownloadQueue({
+    fs: machine.fs, downloads: {enqueue}, formats, dataDir: ROOT, platform: 'desktop', stallMs: 120,
+    notifications: {show() {}}, power: {keepAwake() {}},
+    sources: {debrid: () => true, resolve: async () => { resolved++; return {url: 'https://nexus-318.ceur.tb-cdn.st/dld/abc?token=k'}; }},
+  });
+  const id = queue.enqueue(game, release('https://1fichier.com/?abc'), ROOT);
+  const job = await settled(queue, id, ['installer-required', 'failed']);
+  assert.equal(job.state, 'installer-required', job.error);
+  assert.equal(transfers, 2);
+  assert.equal(resolved, 1, 'the first restart keeps the link; every second one asks for a new one');
+});

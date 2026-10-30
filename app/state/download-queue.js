@@ -413,11 +413,25 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       job2.debridProgress = progress;
       emit2();
     };
+    // ADDED (dviree/overdrivedebrid): a debrid service's download node (TorBox, Premiumize,
+    // Real-Debrid), which sheds a busy account's ranges with 429 and minutes of Retry-After.
+    const DEBRID_CDN = /(?:^|\.)(?:tb-cdn\.st|tb-cdn\.io|real-debrid\.com|premiumize\.me|energycdn\.com)$/;
+    function debridDownload(job2) {
+      const options = job2.parts ? job2.parts[job2.partIndex]?.options : job2.options;
+      try {
+        return DEBRID_CDN.test(webURL(options?.url).host);
+      } catch {
+        return false;
+      }
+    }
     function restartsAfterStall(job2) {
       // The hosts whose gateway answers every range HTTP 503 for a while: DataNodes and FileKeeper
       // both. Named by kind too, since the resolved URL of a captured link need not be the gateway.
       const source2 = job2.parts ? job2.currentSource : job2.release;
       if (source2 && ["filekeeper", "datanodes"].includes(sourceKind(source2))) return true;
+      // MODIFIED (dviree/overdrivedebrid): a debrid download at 0 MB/s starts over too, instead of
+      // sitting there for good.
+      if (debridDownload(job2)) return true;
       try {
         return /(?:^|\.)dlproxy\.uk$/.test(webURL(job2.options?.url).host);
       } catch {
@@ -494,7 +508,8 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         if ((job2.stalls || 0) >= STALL_RESTARTS) return;
         job2.stalls = (job2.stalls || 0) + 1;
         // Only FileKeeper's link comes from a form the app posts again; DataNodes' needs the browser.
-        const relink = job2.stalls % 3 === 0 && sourceKind(job2.release) === "filekeeper";
+        // A debrid service gives a new link at once: every second restart asks it for one.
+        const relink = job2.stalls % 3 === 0 && sourceKind(job2.release) === "filekeeper" || job2.stalls % 2 === 0 && debridDownload(job2);
         restart(relink, `nothing received for ${Math.round((Date.now() - moved) / 1e3)} s (connections ${progress.connections || 0}, retries ${progress.retries || 0}); restart ${job2.stalls} of ${STALL_RESTARTS}`);
       };
     }

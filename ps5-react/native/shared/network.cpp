@@ -587,8 +587,11 @@ bool host_in(const std::string& url, const char* const (&domains)[N]) {
   return false;
 }
 
+// MODIFIED (dviree/overdrivedebrid): TorBox's download links are on tb-cdn.st (its API's own answers,
+// torbox.test.mjs) and Premiumize's on energycdn.com: without them a TorBox download took 64
+// connections, drew TorBox's 429 and sat at 0 MB/s about a minute in.
 bool debrid_cdn(const std::string& url) {
-  static const char* const domains[] = {"tb-cdn.io", "real-debrid.com", "premiumize.me"};
+  static const char* const domains[] = {"tb-cdn.st", "tb-cdn.io", "real-debrid.com", "premiumize.me", "energycdn.com"};
   return host_in(url, domains);
 }
 
