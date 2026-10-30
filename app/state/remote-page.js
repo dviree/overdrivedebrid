@@ -138,6 +138,17 @@
     </section>
 
     <section>
+      <h2>App log</h2>
+      <p class="hint">What Overdrive wrote while downloading, for a bug report. API keys and tokens are hidden.</p>
+      <form id="log-form">
+        <button>Show the log</button>
+        <button type="button" class="ghost" id="log-copy" hidden>Copy</button>
+      </form>
+      <textarea id="log" readonly hidden style="width:100%;height:360px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px;font:12px/1.4 ui-monospace,monospace"></textarea>
+      <p class="status" id="log-status"></p>
+    </section>
+
+    <section>
       <h2>Paired browsers</h2>
       <ul id="devices"></ul>
       <p class="status" id="devices-status"></p>
@@ -288,6 +299,21 @@
       fill($("files"), items, data.path ? "This folder is empty." : "No downloads or homebrew folder on any drive yet.");
     }).catch(function (e) { say("files-status", e.message); });
   }
+  $("log-form").onsubmit = function (event) {
+    event.preventDefault();
+    say("log-status", "Loading…", true);
+    api("log").then(function (data) {
+      $("log").hidden = false; $("log-copy").hidden = false;
+      $("log").value = data.text; $("log").scrollTop = $("log").scrollHeight;
+      say("log-status", data.path ? "From " + data.path : "", true);
+    }).catch(function (e) { say("log-status", e.message); });
+  };
+  $("log-copy").onclick = function () {
+    $("log").select();
+    var done = function () { say("log-status", "Copied. Paste it where you report the problem.", true); };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText($("log").value).then(done, function () { document.execCommand("copy"); done(); });
+    else { document.execCommand("copy"); done(); }
+  };
   function pairWith(code) {
     return api("pair", { code: code, agent: navigator.userAgent }).then(function (r) {
       token = r.token;
