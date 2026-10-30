@@ -17,6 +17,7 @@ import { SideSheet } from './SideSheet.jsx';
 import { colors } from './colors.js';
 import { Text, View, useIsFocused } from '@ps5-react/core';
 
+  var MAX_ROWS = 40;
   var masked = (key) => key.length > 8 ? `${key.slice(0, 4)}\u2026${key.slice(-4)}` : key;
   function Face({ name, detail: detail2, dim }) {
     const focused = useIsFocused();
@@ -69,7 +70,9 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
       setNote("");
       listTorbox().then((list) => alive.current && setEntries(list)).catch((error2) => alive.current && setNote(error2.message)).finally(() => alive.current && setLoading(false));
     };
-    (0, useEffect)(refresh, [key]);
+    // MODIFIED: the account's files are read only when asked for, not as the sheet opens: an account
+    // with many torrents is a few MB of JSON, too much for the app's heap to take on the way in.
+    (0, useEffect)(() => setEntries(null), [key]);
     const fromUsb = () => {
       const found = importTorboxKey();
       setNote(found ? t2("torbox.usbFound") : t2("torbox.usbMissing"));
@@ -107,7 +110,9 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
       key ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "torbox:refresh", name: loading ? t2("torbox.loading") : t2("torbox.refresh"), detail: t2("torbox.refreshDetail"), onPress: refresh }) : null,
       note ? /* @__PURE__ */ (0, jsx)(Note, { children: note }) : null,
       key && entries && !entries.length ? /* @__PURE__ */ (0, jsx)(Note, { children: t2("torbox.empty") }) : null,
-      (key && entries ? entries : []).map((entry2) => /* @__PURE__ */ (0, jsx)(Row, { focusKey: `torbox:${entry2.key}`, name: entry2.name, detail: detailOf(entry2), dim: !entry2.ready, onPress: () => entry2.ready ? download(entry2) : setNote(t2("torbox.notReadyNote")) }, entry2.key))
+      // At most this many rows: each one is several views, and the sheet has to stay light.
+      key && entries && entries.length > MAX_ROWS ? /* @__PURE__ */ (0, jsx)(Note, { children: t2("torbox.more", { count: String(entries.length - MAX_ROWS) }) }) : null,
+      (key && entries ? entries.slice(0, MAX_ROWS) : []).map((entry2) => /* @__PURE__ */ (0, jsx)(Row, { focusKey: `torbox:${entry2.key}`, name: entry2.name, detail: detailOf(entry2), dim: !entry2.ready, onPress: () => entry2.ready ? download(entry2) : setNote(t2("torbox.notReadyNote")) }, entry2.key))
     ] }) });
   }
 
