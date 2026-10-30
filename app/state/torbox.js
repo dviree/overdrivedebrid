@@ -270,6 +270,7 @@ import { linkInput } from './link-download.js';
   // servers (at once when it has it cached) and the console downloads it from TorBox's CDN, so hosts
   // behind a captcha or a wait come down at the connection's speed. What TorBox declines goes to the
   // next service (fallback); a host its list leaves out (supports, debrid-hosts.js) never reaches it.
+  var CHAIN_WAIT_MS = 6 * 60 * 60e3;
   function createTorboxResolver({ http, fallback, apiKey, supports = () => true, wait = defaultWait, now = Date.now }) {
     async function resolve2(release, options = {}) {
       const key = apiKey();
@@ -283,9 +284,10 @@ import { linkInput } from './link-download.js';
       if (!key || options.noDebrid || options.directURL || release.manifestUrl || !link || !supports(link)) return fallback.resolve(release, options);
       try {
         options.onStatus?.(null);
-        // createTorbox's own flow as it was checked against the live API: added, waited for (its
-        // 30 minutes), then linked.
-        const prepared = await createTorbox({ http, key, wait, now }).prepare(webURL(link).url, {
+        // createTorbox's own flow as it was checked against the live API: added, waited for, then
+        // linked. A game TorBox has to fetch first can take longer than the 30 minutes a pasted link
+        // waits, and a catalog download that failed then would only start the wait over: six hours.
+        const prepared = await createTorbox({ http, key, wait, now, timeoutMs: CHAIN_WAIT_MS }).prepare(webURL(link).url, {
           signal: options.signal,
           onProgress: ({ progress }) => options.onStatus?.(progress)
         });

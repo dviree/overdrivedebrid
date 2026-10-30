@@ -451,7 +451,9 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       // five-second countdown, so 12 s of nothing asks for one instead of waiting the minute; when the
       // first new link brings nothing back either, this download waits the gateway out as before.
       const quickMs = stallMs * 2 / 15;
-      const filekeeper = sourceKind(job2.release) === "filekeeper" && !job2.parts;
+      // MODIFIED (dviree/overdrivedebrid): a FileKeeper source a debrid service took comes from that
+      // service's node, not FileKeeper's gateway, so the gateway's quick new link does not apply.
+      const filekeeper = sourceKind(job2.release) === "filekeeper" && !job2.parts && !debridDownload(job2);
       const restart = (relink, line) => {
         console.log(`[download-queue] ${job2.id}: ${line}${relink ? ", with a new link from the source" : ""}`);
         if (relink) delete job2.options;
@@ -483,7 +485,9 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           job2.idleRestarts = (job2.idleRestarts || 0) + 1;
           // Every second one asks FileKeeper's form for a new link: whether a fresh link or a fresh
           // transfer is what the gateway wants is not known yet, and app.log shows which one helped.
-          const relink = job2.idleRestarts % 2 === 0 && sourceKind(job2.release) === "filekeeper";
+          // A debrid node drawing 429s comes in bursts too: fewer connections, as below.
+          if (debridDownload(job2)) job2.connectionCap = Math.max(1, Math.floor((job2.connectionCap || 8) / 2));
+          const relink = job2.idleRestarts % 2 === 0 && (sourceKind(job2.release) === "filekeeper" || debridDownload(job2));
           restart(relink, `idle ${Math.round(idle / 1e3)} s of the last ${Math.round(idleWindow / 1e3)} s in bursts and waits (${gaps.length} waits); restart ${job2.idleRestarts} of ${STALL_RESTARTS}`);
           return;
         }
@@ -508,8 +512,12 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         if ((job2.stalls || 0) >= STALL_RESTARTS) return;
         job2.stalls = (job2.stalls || 0) + 1;
         // Only FileKeeper's link comes from a form the app posts again; DataNodes' needs the browser.
-        // A debrid service gives a new link at once: every second restart asks it for one.
-        const relink = job2.stalls % 3 === 0 && sourceKind(job2.release) === "filekeeper" || job2.stalls % 2 === 0 && debridDownload(job2);
+        // A debrid service gives a new link at once: every second restart asks it for one. Its node
+        // counts connections per account (a free TorBox account takes fewer), and a restart with as
+        // many draws the same 429 again, so each one halves them: 8, 4, 2, 1.
+        const debrid = debridDownload(job2);
+        if (debrid) job2.connectionCap = Math.max(1, Math.floor((job2.connectionCap || 8) / 2));
+        const relink = job2.stalls % 3 === 0 && sourceKind(job2.release) === "filekeeper" && !debrid || job2.stalls % 2 === 0 && debrid;
         restart(relink, `nothing received for ${Math.round((Date.now() - moved) / 1e3)} s (connections ${progress.connections || 0}, retries ${progress.retries || 0}); restart ${job2.stalls} of ${STALL_RESTARTS}`);
       };
     }
@@ -913,7 +921,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           job2.options.rangeBytes = job2.checkpointRangeBytes = rangeBytes;
           change();
         }
-        task = downloads.enqueue({ ...job2.options, rejectHtml: true, mirrors: void 0, connections: 64, adaptive: true, rangeBytes: job2.options.rangeBytes, destination: job2.downloadDestination, storageRoot: job2.root, recoverCompleted: true });
+        task = downloads.enqueue({ ...job2.options, rejectHtml: true, mirrors: void 0, connections: job2.connectionCap || 64, adaptive: true, rangeBytes: job2.options.rangeBytes, destination: job2.downloadDestination, storageRoot: job2.root, recoverCompleted: true });
         active2.task = task;
         const stalled = stallWatch(job2, task);
         unsubscribe = task.subscribe((progress) => {
@@ -1476,7 +1484,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           const task = downloads.enqueue({
             ...part.options,
             rejectHtml: true,
-            connections: 64,
+            connections: job2.connectionCap || 64,
             adaptive: true,
             destination: part.destination,
             storageRoot: job2.root,

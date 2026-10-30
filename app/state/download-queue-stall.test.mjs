@@ -254,3 +254,32 @@ test('a debrid download at 0 MB/s starts over instead of sitting there', async (
   assert.equal(transfers, 2);
   assert.equal(resolved, 1, 'the first restart keeps the link; every second one asks for a new one');
 });
+
+test('each debrid restart asks for fewer connections, and a FileKeeper source through TorBox is not FileKeeper', async () => {
+  const machine = console_();
+  const asked = [];
+  let resolved = 0;
+  const enqueue = (options) => transfer((emit, finish) => {
+    asked.push(options.connections);
+    if (asked.length < 4) return setInterval(() => emit({state: 'downloading', received: 100, completedBytes: 0, total: 1000}), 5).unref();
+    let received = 0;
+    return setInterval(() => {
+      received += 100;
+      if (received >= 1000) finish();
+      else emit({state: 'downloading', received, completedBytes: 0, total: 1000});
+    }, 5).unref();
+  });
+  const formats = {artifact: (item, where) => ({directory: where + '/downloads/packages', destination: where + '/downloads/packages/' + item.filename, nextAction: 'installer-required'})};
+  const queue = createDownloadQueue({
+    fs: machine.fs, downloads: {enqueue}, formats, dataDir: ROOT, platform: 'desktop', stallMs: 120,
+    notifications: {show() {}}, power: {keepAwake() {}},
+    sources: {debrid: () => true, resolve: async () => { resolved++; return {url: 'https://nexus-318.ceur.tb-cdn.st/dld/abc?token=k'}; }},
+  });
+  const id = queue.enqueue(game, release('https://filekeeper.net/abcdefghijkl'), ROOT);
+  const job = await settled(queue, id, ['installer-required', 'failed'], 8000);
+  assert.equal(job.state, 'installer-required', job.error);
+  assert.deepEqual(asked, [64, 4, 2, 1]);
+  // Not FileKeeper's quick new link every 16 ms of quiet (stallMs 120 * 2 / 15): a new link only on
+  // every second debrid restart.
+  assert.equal(resolved, 2);
+});
