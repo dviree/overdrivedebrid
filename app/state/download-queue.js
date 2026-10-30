@@ -508,7 +508,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
             return;
           }
         }
-        if (active2?.restarting || quiet < stallMs || !["connecting", "downloading"].includes(progress.state) || !restartsAfterStall(job2)) return;
+        // MODIFIED (dviree/overdrivedebrid): any source stuck at 0 MB/s starts over, not only the
+        // gateways above (a VikingFile download sat at 0 MB/s for good at 1.3 of 3.9 GB). Those keep
+        // the stall time; another source gets twice it, so a short quiet patch is still waited out.
+        const gated = restartsAfterStall(job2);
+        if (active2?.restarting || quiet < (gated ? stallMs : stallMs * 2) || !["connecting", "downloading"].includes(progress.state)) return;
         if ((job2.stalls || 0) >= STALL_RESTARTS) return;
         job2.stalls = (job2.stalls || 0) + 1;
         // Only FileKeeper's link comes from a form the app posts again; DataNodes' needs the browser.
@@ -517,7 +521,13 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         // many draws the same 429 again, so each one halves them: 8, 4, 2, 1.
         const debrid = debridDownload(job2);
         if (debrid) job2.connectionCap = Math.max(1, Math.floor((job2.connectionCap || 8) / 2));
-        const relink = job2.stalls % 3 === 0 && sourceKind(job2.release) === "filekeeper" && !debrid || job2.stalls % 2 === 0 && debrid;
+        // Another host may be throttling as many connections as well: halved too, down to eight. A
+        // host whose page gives the link (VikingFile, MediaFire, FileKeeper) gives a new one every
+        // second restart; a direct link has only itself.
+        else if (!gated) job2.connectionCap = Math.max(8, Math.floor((job2.connectionCap || 64) / 2));
+        const kind = sourceKind(job2.release);
+        const fromPage = !job2.parts && !["direct", "manifest", "unavailable", "browser", "datanodes", "buzzheavier"].includes(kind);
+        const relink = job2.stalls % 3 === 0 && kind === "filekeeper" && !debrid || job2.stalls % 2 === 0 && (debrid || !gated && fromPage);
         restart(relink, `nothing received for ${Math.round((Date.now() - moved) / 1e3)} s (connections ${progress.connections || 0}, retries ${progress.retries || 0}); restart ${job2.stalls} of ${STALL_RESTARTS}`);
       };
     }

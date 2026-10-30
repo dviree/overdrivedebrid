@@ -283,3 +283,35 @@ test('each debrid restart asks for fewer connections, and a FileKeeper source th
   // every second debrid restart.
   assert.equal(resolved, 2);
 });
+
+// dviree/overdrivedebrid: a VikingFile download sat at 0 MB/s at 1.3 of 3.9 GB, for good: only the
+// gateways were watched. Any source now starts over after twice the stall time, with fewer connections.
+test('a download from any host stuck at 0 MB/s starts over after twice the stall time', async () => {
+  const machine = console_();
+  const asked = [];
+  let resolved = 0;
+  const started = [];
+  const enqueue = (options) => transfer((emit, finish) => {
+    asked.push(options.connections);
+    started.push(Date.now());
+    if (asked.length === 1) return setInterval(() => emit({state: 'downloading', received: 100, completedBytes: 0, total: 1000}), 5).unref();
+    let received = 0;
+    return setInterval(() => {
+      received += 100;
+      if (received >= 1000) finish();
+      else emit({state: 'downloading', received, completedBytes: 0, total: 1000});
+    }, 5).unref();
+  });
+  const formats = {artifact: (item, where) => ({directory: where + '/downloads/packages', destination: where + '/downloads/packages/' + item.filename, nextAction: 'installer-required'})};
+  const queue = createDownloadQueue({
+    fs: machine.fs, downloads: {enqueue}, formats, dataDir: ROOT, platform: 'desktop', stallMs: 120,
+    notifications: {show() {}}, power: {keepAwake() {}},
+    sources: {resolve: async () => { resolved++; return {url: 'https://cdn.vikingfile.com/f/abc'}; }},
+  });
+  const id = queue.enqueue(game, release('https://vikingfile.com/f/abcdef'), ROOT);
+  const job = await settled(queue, id, ['installer-required', 'failed'], 6000);
+  assert.equal(job.state, 'installer-required', job.error);
+  assert.deepEqual(asked, [64, 32]);
+  assert.ok(started[1] - started[0] >= 240, `restarted after ${started[1] - started[0]} ms, before twice the stall time`);
+  assert.equal(resolved, 1, 'the first restart keeps the link');
+});
