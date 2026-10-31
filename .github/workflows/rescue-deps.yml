@@ -1,0 +1,68 @@
+name: rescue deps
+
+# MyLuxy's GitHub account is gone (404 since 2026-10-30), and with it MyLuxy/overdrive-deps, which held
+# two build dependencies nothing else serves: the platform layer (ps5-homebrew-ui, a git repository
+# pinned in ps5-react/dependencies.lock.json) and the PS5 OpenGL SDK archive (its sha256 is in the lock
+# file too). This repository's build cache still holds both. This workflow copies them out once, so
+# builds keep working once the cache expires:
+#   - the platform repository's history, to the branch deps/platform here (the pinned revision stays
+#     the same commit, so the lock file's revision still names it);
+#   - the SDK archive, to the release "deps-ps5-opengl-v1.0.0" here, a prerelease that is never the
+#     latest release (the app's update check and the catalog read the latest one).
+# Run it from Actions → rescue deps → Run workflow. It changes nothing when both are already saved.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rescue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore the build's cache of downloaded sources
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ps5-react/.deps
+          key: deps-${{ hashFiles('ps5-react/dependencies.lock.json') }}
+          fail-on-cache-miss: true
+
+      - name: Check what the cache holds against the lock file
+        run: |
+          set -e
+          revision=$(python3 -c "import json; print(json.load(open('ps5-react/dependencies.lock.json'))['platform']['revision'])")
+          sha=$(python3 -c "import json; print(json.load(open('ps5-react/dependencies.lock.json'))['ps5OpenGL']['sha256'])")
+          echo "platform pinned at $revision; SDK sha256 $sha"
+          ls -la ps5-react/.deps
+          git -C ps5-react/.deps/platform cat-file -e "$revision^{commit}"
+          echo "$sha  ps5-react/.deps/ps5-opengl-sdk-1.0.0.tar.gz" | sha256sum -c -
+          echo "REVISION=$revision" >> "$GITHUB_ENV"
+
+      - name: Save the platform repository to deps/platform
+        run: |
+          set -e
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
+          if git ls-remote --exit-code "$remote" refs/heads/deps/platform >/dev/null; then
+            echo "deps/platform already saved"
+          else
+            git -C ps5-react/.deps/platform push "$remote" "$REVISION:refs/heads/deps/platform"
+          fi
+
+      - name: Save the SDK archive to a prerelease
+        run: |
+          set -e
+          tag=deps-ps5-opengl-v1.0.0
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag already saved"
+          else
+            gh release create "$tag" ps5-react/.deps/ps5-opengl-sdk-1.0.0.tar.gz \
+              --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "Build dependency: PS5 OpenGL SDK 1.0.0" \
+              --notes "Kept here since MyLuxy/overdrive-deps is gone; its sha256 is in ps5-react/dependencies.lock.json. Not an Overdrive release."
+          fi
