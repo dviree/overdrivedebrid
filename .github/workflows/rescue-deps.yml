@@ -5,10 +5,11 @@ name: rescue deps
 # pinned in ps5-react/dependencies.lock.json) and the PS5 OpenGL SDK archive (its sha256 is in the lock
 # file too). This repository's build cache still holds both. This workflow copies them out once, so
 # builds keep working once the cache expires:
-#   - the platform repository's history, to the branch deps/platform here (the pinned revision stays
-#     the same commit, so the lock file's revision still names it);
-#   - the SDK archive, to the release "deps-ps5-opengl-v1.0.0" here, a prerelease that is never the
-#     latest release (the app's update check and the catalog read the latest one).
+#   - the platform repository's history, as platform.bundle (the pinned revision stays the same
+#     commit, so the lock file's revision still names it), and
+#   - the SDK archive,
+# both to the release "build-deps-v1" here, a prerelease that is never the latest release (the app's
+# update check and the catalog read the latest one).
 # Run it from Actions → rescue deps → Run workflow. It changes nothing when both are already saved.
 on:
   workflow_dispatch:
@@ -44,25 +45,28 @@ jobs:
           echo "$sha  ps5-react/.deps/ps5-opengl-sdk-1.0.0.tar.gz" | sha256sum -c -
           echo "REVISION=$revision" >> "$GITHUB_ENV"
 
-      - name: Save the platform repository to deps/platform
+      - name: Bundle the platform repository
+        # A bundle, not a branch: its history holds workflow files, which this workflow's token may not
+        # push. A bundle is one file holding every commit, and `git clone` takes it as a source.
         run: |
           set -e
-          remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
-          if git ls-remote --exit-code "$remote" refs/heads/deps/platform >/dev/null; then
-            echo "deps/platform already saved"
-          else
-            git -C ps5-react/.deps/platform push "$remote" "$REVISION:refs/heads/deps/platform"
-          fi
+          git -C ps5-react/.deps/platform bundle create "$RUNNER_TEMP/platform.bundle" --all
+          git bundle verify "$RUNNER_TEMP/platform.bundle"
+          git bundle list-heads "$RUNNER_TEMP/platform.bundle"
+          rm -rf "$RUNNER_TEMP/check" && git clone -q "$RUNNER_TEMP/platform.bundle" "$RUNNER_TEMP/check"
+          git -C "$RUNNER_TEMP/check" cat-file -e "$REVISION^{commit}"
+          sha256sum "$RUNNER_TEMP/platform.bundle"
 
-      - name: Save the SDK archive to a prerelease
+      - name: Save both to a prerelease
         run: |
           set -e
-          tag=deps-ps5-opengl-v1.0.0
+          tag=build-deps-v1
+          files="ps5-react/.deps/ps5-opengl-sdk-1.0.0.tar.gz $RUNNER_TEMP/platform.bundle"
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "$tag already saved"
+            gh release upload "$tag" $files --clobber
           else
-            gh release create "$tag" ps5-react/.deps/ps5-opengl-sdk-1.0.0.tar.gz \
+            gh release create "$tag" $files \
               --prerelease --latest=false --target "$GITHUB_SHA" \
-              --title "Build dependency: PS5 OpenGL SDK 1.0.0" \
-              --notes "Kept here since MyLuxy/overdrive-deps is gone; its sha256 is in ps5-react/dependencies.lock.json. Not an Overdrive release."
+              --title "Build dependencies kept from MyLuxy/overdrive-deps" \
+              --notes "MyLuxy/overdrive-deps is gone. platform.bundle holds the platform repository's history (the lock file pins its revision); ps5-opengl-sdk-1.0.0.tar.gz is checked by the lock file's sha256. Not an Overdrive release."
           fi
