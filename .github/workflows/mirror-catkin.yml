@@ -1,0 +1,81 @@
+name: mirror catkin
+
+# git.catkin.dev/thirdparty keeps copies of MyLuxy's repositories, which are gone from GitHub. Claude
+# Code's cloud sessions cannot reach that host, Actions can. Run by hand (Actions → mirror catkin →
+# Run workflow): it fetches the copy, reports what it holds that this repository lacks, and puts it on
+# branches here for review, nothing merged:
+#   - mirror/catkin-overdrive: the copy of MyLuxy/overdrive's main;
+#   - for every other repository found under thirdparty with an overdrive name (overdrive-deps first,
+#     which held two build dependencies), its heads as a git bundle on the prerelease mirror-catkin.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HOST: https://git.catkin.dev/thirdparty
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: What the host holds
+        run: |
+          for name in overdrive overdrive-deps overdrive-releases ps5-opengl ps5-homebrew-ui; do
+            echo "== $name"
+            timeout 60 git ls-remote "$HOST/$name.git" 2>&1 | head -20 || true
+          done
+
+      - name: Fetch the copy of MyLuxy/overdrive and report what is new
+        run: |
+          set -e
+          git fetch --no-tags "$HOST/overdrive.git" '+refs/heads/*:refs/remotes/catkin/*'
+          for branch in $(git for-each-ref --format='%(refname:short)' refs/remotes/catkin/); do
+            echo "== $branch: $(git log -1 --format='%h %ad %an %s' --date=iso "$branch")"
+            echo "commits it has that main lacks: $(git rev-list --count origin/main.."$branch")"
+            git log --format='%h %ad %an %s' --date=short origin/main.."$branch" | head -60
+            echo "files those commits change:"
+            git diff --stat "$(git merge-base origin/main "$branch")" "$branch" | tail -40
+          done
+
+      - name: Put it on a branch here for review
+        run: |
+          set -e
+          head=$(git for-each-ref --format='%(refname:short)' refs/remotes/catkin/main refs/remotes/catkin/master | head -1)
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
+          if git push "$remote" "$head:refs/heads/mirror/catkin-overdrive" 2>&1 | tee "$RUNNER_TEMP/push.log"; then
+            echo "pushed $head to mirror/catkin-overdrive"
+          else
+            echo "::warning::the branch was refused (see above); the copy goes as a bundle instead"
+            git bundle create "$RUNNER_TEMP/catkin-overdrive.bundle" "$head"
+          fi
+
+      - name: Bundle the other repositories for review
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/other"
+          for name in overdrive-deps ps5-opengl ps5-homebrew-ui overdrive-releases; do
+            if timeout 600 git clone -q --mirror "$HOST/$name.git" "$RUNNER_TEMP/other/$name.git" 2>/dev/null; then
+              git -C "$RUNNER_TEMP/other/$name.git" bundle create "$RUNNER_TEMP/$name.bundle" --all
+              echo "$name: $(git -C "$RUNNER_TEMP/other/$name.git" log -1 --all --format='%h %ad %s' --date=short)"
+              git -C "$RUNNER_TEMP/other/$name.git" cat-file -e 4bd942579dd981b3df9c740438489ca6a614ddc0 2>/dev/null \
+                && echo "$name holds the platform revision pinned in the lock file (4bd94257)" || true
+            fi
+          done
+          files=$(ls "$RUNNER_TEMP"/*.bundle 2>/dev/null || true)
+          if [ -n "$files" ]; then
+            sha256sum $files
+            if gh release view mirror-catkin >/dev/null 2>&1; then
+              gh release upload mirror-catkin $files --clobber
+            else
+              gh release create mirror-catkin $files --prerelease --latest=false --target "$GITHUB_SHA" \
+                --title "Copies from git.catkin.dev/thirdparty, for review" \
+                --notes "Fetched by the mirror catkin workflow. For review only; nothing here is merged. Not an Overdrive release."
+            fi
+          fi
