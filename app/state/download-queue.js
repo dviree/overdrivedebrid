@@ -417,6 +417,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
     // (archive-account.js) goes to the host itself: a debrid service cannot send its cookies.
     function sourceOptions(job2, signal) {
       const source = job2.currentSource || job2.release;
+      const previous = job2.message;
       const authenticatedArchive = archiveAuth?.enabled?.() && archiveAuth.isArchive(source.browserUrl || source.url || "");
       return {
         signal,
@@ -424,7 +425,13 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         // A pasted link carrying its own headers (a qBittorrent WebUI's password) goes to its host.
         noDebrid: job2.noDebrid || authenticatedArchive || !source.torbox && Object.keys(source.headers || {}).length > 0,
         catalog: job2.gameId !== "link" && !job2.release.link && !authenticatedArchive,
-        onStatus: debridStatus(job2)
+        onStatus: debridStatus(job2),
+        // Upstream's resolvers (catalog-torbox.js) report "Waiting for TorBox 50%" on the row this way.
+        onProgress(report) {
+          const percent = report && Number.isFinite(report.progress) ? ` ${Math.round(Math.max(0, Math.min(1, report.progress)) * 100)}%` : "";
+          job2.message = report ? t("add.waitTitle", { service: report.service }) + percent : previous;
+          emit2();
+        }
       };
     }
     // While TorBox fetches the file onto its servers the row says so, with TorBox's progress.
