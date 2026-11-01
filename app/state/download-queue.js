@@ -6,10 +6,13 @@
 // has its file link captured from the browser, like Vikingfile's.
 // MODIFIED: with a TorBox key every source resolves through TorBox, direct links included.
 // MODIFIED: move(id, direction) reorders the queue, for the computer page.
+// MODIFIED: an Archive.org download carries the signed-in account's cookies, and signs in again once
+// when the session is refused (archive-account.js).
 
 import { INCOMPLETE_PART, STALE_PARTIAL, cause } from '../downloads/errors.js';
 import { t } from '../i18n/core.js';
 import { archivePassword } from './archive-password.js';
+import { downloadConnections } from './download-connections.js';
 import { BrowserRequired, archiveRefusal, cancellation, createSourceResolver, sourceKind, webURL } from './download-sources.js';
 import { LINK_PREFIX, captureAnchor, linkForLog, otherSourceLink, validateCapturedLink } from './browser-links.js';
 import { readJSON } from './read-json.js';
@@ -103,6 +106,8 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       delete job2.captureError;
       delete job2.captureFile;
       delete job2.fallbacks;
+      // A new launch may sign in again once, whatever the last one left behind (archive-account.js).
+      delete job2.reauthTried;
       // Closed while the console was being handed its link: resumed, it downloads here.
       if (job2.state === "installing" && !job2.streaming) return { ...job2, state: "installer-required" };
       delete job2.streaming;
@@ -138,6 +143,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
     packages,
     releasesOf,
     browserCapture,
+    archiveAuth,
     stallMs = STALL_MS,
     // The package helper (pkg-helper.js), whose links keep working once the app has closed; without
     // one, a package the console takes from the app is served by the app itself.
@@ -407,6 +413,27 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       destination: `${root2}/downloads/extracted/${release.filename}`,
       nextAction: "extracted"
     } : formats.artifact(release, root2);
+    // The options a source is resolved with. An Archive.org download signed in with the account
+    // (archive-account.js) goes to the host itself: a debrid service cannot send its cookies.
+    function sourceOptions(job2, signal) {
+      const source = job2.currentSource || job2.release;
+      const previous = job2.message;
+      const authenticatedArchive = archiveAuth?.enabled?.() && archiveAuth.isArchive(source.browserUrl || source.url || "");
+      return {
+        signal,
+        directURL: job2.directURL,
+        // A pasted link carrying its own headers (a qBittorrent WebUI's password) goes to its host.
+        noDebrid: job2.noDebrid || authenticatedArchive || !source.torbox && Object.keys(source.headers || {}).length > 0,
+        catalog: job2.gameId !== "link" && !job2.release.link && !authenticatedArchive,
+        onStatus: debridStatus(job2),
+        // Upstream's resolvers (catalog-torbox.js) report "Waiting for TorBox 50%" on the row this way.
+        onProgress(report) {
+          const percent = report && Number.isFinite(report.progress) ? ` ${Math.round(Math.max(0, Math.min(1, report.progress)) * 100)}%` : "";
+          job2.message = report ? t("add.waitTitle", { service: report.service }) + percent : previous;
+          emit2();
+        }
+      };
+    }
     // While TorBox fetches the file onto its servers the row says so, with TorBox's progress.
     const debridStatus = (job2) => (progress) => {
       job2.phase = "debrid";
@@ -415,7 +442,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
     };
     // ADDED (dviree/overdrivedebrid): a debrid service's download node (TorBox, Premiumize,
     // Real-Debrid), which sheds a busy account's ranges with 429 and minutes of Retry-After.
-    const DEBRID_CDN = /(?:^|\.)(?:tb-cdn\.st|tb-cdn\.io|real-debrid\.com|premiumize\.me|energycdn\.com)$/;
+    const DEBRID_CDN = /(?:^|\.)(?:tb-cdn\.st|tb-cdn\.io|tb-cdn\.cx|tb-cdn\.earth|torbox\.app|real-debrid\.com|premiumize\.me|energycdn\.com)$/;
     function debridDownload(job2) {
       const options = job2.parts ? job2.parts[job2.partIndex]?.options : job2.options;
       try {
@@ -540,7 +567,10 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
     function reresolve(job2) {
       const source2 = job2.parts ? job2.currentSource : job2.release;
       // Through a debrid service any expired link is asked for again; otherwise only a host page is.
-      if ((job2.reresolved || 0) >= 2 || (sources.debrid?.() ? ["manifest", "unavailable"] : ["direct", "browser", "datanodes", "buzzheavier", "manifest", "unavailable"]).includes(sourceKind(source2))) return false;
+      // A link a debrid service converted (viaTorbox / viaRealDebrid) is asked for again as well.
+      const sourceJob = job2.parts ? job2.parts[job2.partIndex] : job2;
+      const converted = sourceJob?.viaTorbox || sourceJob?.viaRealDebrid;
+      if ((job2.reresolved || 0) >= 2 || (sources.debrid?.() || converted ? ["manifest", "unavailable"] : ["direct", "browser", "datanodes", "buzzheavier", "manifest", "unavailable"]).includes(sourceKind(source2))) return false;
       job2.reresolved = (job2.reresolved || 0) + 1;
       delete job2.options;
       if (job2.parts) delete job2.parts[job2.partIndex].options;
@@ -785,7 +815,9 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
     async function streamed(job2, signal) {
       const options = job2.options;
       const format = String(job2.release.format || "binary").toLowerCase();
-      if (!canInstall() || job2.streamTried || job2.written || job2.output || !STREAMABLE.includes(format) || !options?.url || options.pieces || options.method === "POST" || Object.keys(options.headers || {}).length) return false;
+      // An authenticated Archive.org download stays here: the console's own downloader cannot send
+      // the account's cookies (archive-account.js), so the file would only be refused.
+      if (!canInstall() || job2.streamTried || job2.written || job2.output || !STREAMABLE.includes(format) || !options?.url || options.pieces || options.method === "POST" || options.archive || Object.keys(options.headers || {}).length) return false;
       // A part file means this job already began downloading here: the console would start from zero.
       if (fs.exists(`${job2.downloadDestination}.part`)) {
         console.log(`[download-queue] ${job2.id}: not streamed, it already has a part file here`);
@@ -903,7 +935,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
             // file is behind its password: the release carries the headers for it (link-download.js).
             // MODIFIED: with a debrid key, a link goes through TorBox and Premiumize, unless it carries
             // such headers or "Download directly" asked for the host itself.
-            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" || sources.debrid?.() && !job2.noDebrid && !job2.release.headers || job2.release.torbox ? await sources.resolve(job2.release, { signal, directURL: job2.directURL, noDebrid: job2.noDebrid, onStatus: debridStatus(job2) }) : { url: webURL(job2.release.url).url, headers: job2.release.headers };
+            // Every source is resolved (a direct one too: the resolver keeps its headers), so the debrid
+            // chain sees each; viaTorbox / viaRealDebrid stay on the job, outside the transfer's options.
+            const { viaTorbox, viaRealDebrid, ...resolved } = await sources.resolve(job2.release, sourceOptions(job2, signal));
+            job2.viaTorbox = viaTorbox === true;
+            job2.viaRealDebrid = viaRealDebrid === true;
             delete job2.phase;
             delete job2.debridProgress;
             job2.options = {
@@ -917,6 +953,12 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           }
           job2.total = job2.options.expectedBytes || null;
           change();
+        }
+        // Archive.org's restricted items need the account's cookies (archive-account.js). The flag
+        // stays on the job; the cookies themselves go on the transfer alone, never into the queue.
+        if (job2.options) {
+          if (archiveAuth?.enabled?.() && archiveAuth.isArchive(job2.release.browserUrl || job2.release.url || "")) job2.options.archive = true;
+          else delete job2.options.archive;
         }
         if (job2.state === "pausing") return;
         if (await streamed(job2, signal) || job2.state === "pausing") return;
@@ -937,7 +979,27 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           job2.options.rangeBytes = job2.checkpointRangeBytes = rangeBytes;
           change();
         }
-        task = downloads.enqueue({ ...job2.options, rejectHtml: true, mirrors: void 0, connections: job2.connectionCap || 64, adaptive: true, rangeBytes: job2.options.rangeBytes, destination: job2.downloadDestination, storageRoot: job2.root, recoverCompleted: true });
+        // The account's cookies and the node the archival link redirects to are added to this
+        // transfer alone (archive-account.js): a custom header turns redirects off, so the node is
+        // resolved here, and the job keeps the archival URL for the next launch.
+        let transfer = job2.options;
+        if (job2.options.archive) {
+          const source = job2.options.url || job2.release.url;
+          const headers = { ...job2.options.headers, ...await archiveAuth.headersFor(source) };
+          const url = await archiveAuth.resolve(source, headers, signal);
+          transfer = { ...job2.options, url, headers };
+          if (url !== source) {
+            let host = "its node";
+            try {
+              host = webURL(url).host;
+            } catch {}
+            console.log(`[download-queue] ${job2.id}: Archive.org serves it from ${host}`);
+          }
+        }
+        // Archive.org's nodes shed parallel ranges when many arrive together (an HTTP 503 reads as
+        // "Server is busy"): four connections there; elsewhere the cap stall restarts set (connectionCap), else the host's (download-connections.js).
+        const connections = job2.options.archive ? 4 : job2.connectionCap || downloadConnections(transfer, job2.viaTorbox);
+        task = downloads.enqueue({ ...transfer, rejectHtml: true, mirrors: void 0, connections, adaptive: true, rangeBytes: job2.options.rangeBytes, destination: job2.downloadDestination, storageRoot: job2.root, recoverCompleted: true });
         active2.task = task;
         const stalled = stallWatch(job2, task);
         unsubscribe = task.subscribe((progress) => {
@@ -950,7 +1012,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           job2.received = progress.received || 0;
           job2.connections = progress.connections || 0;
           job2.bytesPerSecond = progress.bytesPerSecond || 0;
-          if (job2.written > 0) delete job2.adopted;
+          if (job2.written > 0) {
+            delete job2.adopted;
+            // Receiving again: a later refusal may sign in again (archive-account.js).
+            delete job2.reauthTried;
+          }
           if (++ticks % 20 === 0) {
             delete job2.launches;
             try {
@@ -982,9 +1048,25 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           return;
         }
         // The engine words every 401/403 as a possible browser check; from Archive.org it is a
-        // restricted or removed item, so it reads as a dead link.
+        // restricted or removed item, so it reads as a dead link — unless the account's session
+        // expired: that signs in again once, then retries from the archival URL (the node may have
+        // changed). The cookies are not the file's problem, so a second refusal stays a dead link.
         const refused = archiveRefusal(job2.parts ? job2.currentSource : job2.release, cause(error2.message));
-        if (refused) error2 = new Error(`Source unavailable: HTTP ${refused}. Choose another source.`);
+        if (refused && job2.options?.archive && archiveAuth && !job2.reauthTried) {
+          job2.reauthTried = true;
+          try {
+            await archiveAuth.refresh();
+            delete job2.options;
+            job2.error = "";
+            job2.state = "queued";
+            active2.restarting = true;
+            console.log(`[download-queue] ${job2.id}: Archive.org refused the session (HTTP ${refused}); signed in again, retrying`);
+            return;
+          } catch (failure) {
+            console.log(`[download-queue] ${job2.id}: Archive.org sign-in failed: ${failure.message}`);
+            error2 = new Error(`Archive.org sign-in failed: ${failure.message}`);
+          }
+        } else if (refused) error2 = new Error(`Source unavailable: HTTP ${refused}. Choose another source.`);
         // A link captured from the browser may wait in the queue past its life: refused before a byte
         // was written, it asks for the page's check again instead of reading as a dead source.
         const unwritten = !(job2.parts ? job2.parts[job2.partIndex]?.written : job2.written);
@@ -1478,7 +1560,9 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           const source2 = job2.release.parts[index].sources[part.sourceIndex || 0];
           job2.currentSource = source2;
           if (!part.options) {
-            const resolved = await sources.resolve(source2, { signal, directURL: job2.directURL, noDebrid: job2.noDebrid, onStatus: debridStatus(job2) });
+            const { viaTorbox, viaRealDebrid, ...resolved } = await sources.resolve(source2, sourceOptions(job2, signal));
+            part.viaTorbox = viaTorbox === true;
+            part.viaRealDebrid = viaRealDebrid === true;
             delete job2.phase;
             delete job2.debridProgress;
             part.options = { ...resolved, expectedBytes: resolved.expectedBytes || source2.sizeBytes || void 0, sha256: source2.sha256 || void 0 };
@@ -1500,7 +1584,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           const task = downloads.enqueue({
             ...part.options,
             rejectHtml: true,
-            connections: job2.connectionCap || 64,
+            connections: job2.connectionCap || downloadConnections(part.options, part.viaTorbox),
             adaptive: true,
             destination: part.destination,
             storageRoot: job2.root,
@@ -2136,7 +2220,9 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         const id = `${game.id}/${release.id}`;
         const existing = jobs.find((job2) => job2.id === id);
         if (existing) return existing.id;
-        if (release.unavailableReason) throw new Error(release.unavailableReason);
+        // Archive.org's stored refusal is the session's, not the file's: with an account set the
+        // download signs in and tries it (archive-account.js).
+        if (release.unavailableReason && !(archiveAuth?.enabled?.() && archiveAuth.isArchive(release.browserUrl || release.url || ""))) throw new Error(release.unavailableReason);
         const artifact2 = artifactFor(release, root2);
         if (fs.exists(artifact2.destination)) throw new Error("Destination already exists. Choose another release or inspect the existing file.");
         if (jobs.some((job2) => job2.artifact.destination === artifact2.destination)) throw new Error("Another queued release owns this filename.");

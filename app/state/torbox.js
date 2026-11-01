@@ -65,6 +65,10 @@ import { linkInput } from './link-download.js';
         json = JSON.parse(text);
       } catch {
       }
+      // The reason a link is refused is in the body, and nowhere else (MyLuxy/overdrive 4bbcbee7). Log
+      // the endpoint without its query (requestdl carries the key there) and the body without the key.
+      if (!response.ok || json?.success === false)
+        console.log(`[torbox] ${path.split("?")[0]}: HTTP ${response.status} ${String(text).split(key).join("***").slice(0, 300)}`);
       // Whatever the body says, these two are the key: the API has none of its own to refuse.
       if (response.status === 401 || response.status === 403) throw new Error(KEY_REFUSED);
       if (!json || typeof json !== "object") throw new TorboxRefused(`TorBox answered HTTP ${response.status}.`);

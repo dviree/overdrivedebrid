@@ -1,0 +1,35 @@
+name: test
+
+# The app's unit tests (app/**/*.test.mjs, node:test) on every pull request, and the framework's
+# JavaScript tests and a bundle of the whole app: a merge from upstream is checked here before main.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Framework packages
+        run: cd ps5-react && npm ci --ignore-scripts --no-audit --no-fund
+      - name: Locales parse
+        run: for file in app/i18n/locales/*.json; do node -e "JSON.parse(require('fs').readFileSync('$file','utf8'))" || exit 1; done
+      - name: App unit tests
+        run: node --test --test-reporter=dot app/state/*.test.mjs app/game/*.test.mjs
+      - name: Framework JavaScript tests
+        run: cd ps5-react && node --test runtime/js/*.test.mjs
+      - name: The whole app bundles
+        run: |
+          npx --yes esbuild@0.23.0 app/index.jsx --bundle --format=esm --jsx=automatic --loader:.js=jsx \
+            --loader:.ttf=empty --loader:.png=empty --loader:.wav=empty --loader:.jpg=empty \
+            --alias:@ps5-react/core="$PWD/ps5-react/runtime/js/index.js" \
+            --external:react --external:react/jsx-runtime --external:embedded-react \
+            --outfile=/tmp/bundle-check.js --log-level=warning

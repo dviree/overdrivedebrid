@@ -11,7 +11,9 @@ import { Archives, Downloads, FileSystem, Http, Platform } from '@ps5-react/core
 
   var TITLE = "PPSA99058";
   var FEED = FORK_FEED;
-  var FEED_OVERRIDES = [`${FileSystem.dataDir}/overdrive/update-feed`, `/data/ps5-react/${TITLE}/overdrive/update-feed`];
+  // Not overridable by a file (MyLuxy/overdrive 89f8f301): an older Overdrive leaves
+  // `overdrive/update-feed` in the data directory naming its own releases repository, which no
+  // longer exists, and every install upgraded in place then asked a dead feed for updates.
   function location() {
     if (Platform.OS !== "ps5") return { installDir: `${FileSystem.dataDir}/homebrew/${TITLE}`, workDir: `${FileSystem.dataDir}/overdrive-update` };
     return locateInstall({ http: Http, fs: FileSystem, title: TITLE, roots: storageRoots });
@@ -31,21 +33,13 @@ import { Archives, Downloads, FileSystem, Http, Platform } from '@ps5-react/core
     if (updater) return updater;
     const install = await location();
     foundInstall(install);
-    const override = FEED_OVERRIDES.find((path) => {
-      try {
-        return FileSystem.exists(path);
-      } catch {
-        return false;
-      }
-    });
-    const feed = override ? FileSystem.readFile(override).trim() : FEED;
     return updater = createUpdater({
       http: Http,
       downloads: Downloads,
       archives: Archives,
       fs: FileSystem,
       version: FORK_VERSION,
-      feed,
+      feed: FEED,
       asset: assetFor(install),
       marker: `${FileSystem.dataDir}/overdrive/pending-image.json`,
       ...install

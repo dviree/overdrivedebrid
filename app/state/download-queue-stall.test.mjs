@@ -278,7 +278,8 @@ test('each debrid restart asks for fewer connections, and a FileKeeper source th
   const id = queue.enqueue(game, release('https://filekeeper.net/abcdefghijkl'), ROOT);
   const job = await settled(queue, id, ['installer-required', 'failed'], 8000);
   assert.equal(job.state, 'installer-required', job.error);
-  assert.deepEqual(asked, [64, 4, 2, 1]);
+  // TorBox's CDN starts at sixteen (download-connections.js, MyLuxy/overdrive), then each restart halves.
+  assert.deepEqual(asked, [16, 4, 2, 1]);
   // Not FileKeeper's quick new link every 16 ms of quiet (stallMs 120 * 2 / 15): a new link only on
   // every second debrid restart.
   assert.equal(resolved, 2);
