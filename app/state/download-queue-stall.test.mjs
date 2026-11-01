@@ -315,3 +315,32 @@ test('a download from any host stuck at 0 MB/s starts over after twice the stall
   assert.ok(started[1] - started[0] >= 240, `restarted after ${started[1] - started[0]} ms, before twice the stall time`);
   assert.equal(resolved, 1, 'the first restart keeps the link');
 });
+
+// dviree/overdrivedebrid: a TorBox download sat at "connecting · 3.2 GB of 127.1 GB". The engine waits
+// out TorBox's Retry-After (up to 300 s) in its probe while "connecting"; restarting every 90 s only
+// drew the same 429 until the restarts ran out. A connecting transfer now gets 11/3 of the stall time.
+test('a transfer still connecting is given the host\'s wait before it counts as stuck', async () => {
+  const machine = console_();
+  const started = [];
+  const enqueue = () => transfer((emit, finish) => {
+    started.push(Date.now());
+    if (started.length === 1) return setInterval(() => emit({state: 'connecting', received: 0, completedBytes: 0, total: 1000}), 5).unref();
+    let received = 0;
+    return setInterval(() => {
+      received += 100;
+      if (received >= 1000) finish();
+      else emit({state: 'downloading', received, completedBytes: 0, total: 1000});
+    }, 5).unref();
+  });
+  const formats = {artifact: (item, where) => ({directory: where + '/downloads/packages', destination: where + '/downloads/packages/' + item.filename, nextAction: 'installer-required'})};
+  const queue = createDownloadQueue({
+    fs: machine.fs, downloads: {enqueue}, formats, dataDir: ROOT, platform: 'desktop', stallMs: 60,
+    notifications: {show() {}}, power: {keepAwake() {}},
+    sources: {debrid: () => true, resolve: async () => ({url: 'https://nexus-318.ceur.tb-cdn.st/dld/abc?token=k'})},
+  });
+  const id = queue.enqueue(game, release('https://1fichier.com/?abc'), ROOT);
+  const job = await settled(queue, id, ['installer-required', 'failed'], 6000);
+  assert.equal(job.state, 'installer-required', job.error);
+  assert.equal(started.length, 2);
+  assert.ok(started[1] - started[0] >= 215, `restarted ${started[1] - started[0]} ms in, before the 220 ms a connecting transfer gets`);
+});

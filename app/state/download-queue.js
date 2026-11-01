@@ -512,7 +512,13 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         // gateways above (a VikingFile download sat at 0 MB/s for good at 1.3 of 3.9 GB). Those keep
         // the stall time; another source gets twice it, so a short quiet patch is still waited out.
         const gated = restartsAfterStall(job2);
-        if (active2?.restarting || quiet < (gated ? stallMs : stallMs * 2) || !["connecting", "downloading"].includes(progress.state)) return;
+        // While "connecting" the engine is in its probe, waiting out the host's Retry-After: up to five
+        // minutes on a debrid node (retry_ceiling in network.cpp). A restart then only opens another
+        // connection TorBox still counts against the account, draws the same 429, and after ten of them
+        // the download sat at "connecting" for good (3.2 of 127.1 GB). So a connecting transfer is given
+        // that wait, and a little more (330 s), before it counts as stuck.
+        const limit = progress.state === "connecting" ? Math.max(stallMs * 11 / 3, gated ? stallMs : stallMs * 2) : gated ? stallMs : stallMs * 2;
+        if (active2?.restarting || quiet < limit || !["connecting", "downloading"].includes(progress.state)) return;
         if ((job2.stalls || 0) >= STALL_RESTARTS) return;
         job2.stalls = (job2.stalls || 0) + 1;
         // Only FileKeeper's link comes from a form the app posts again; DataNodes' needs the browser.
