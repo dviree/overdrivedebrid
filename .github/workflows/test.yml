@@ -23,7 +23,7 @@ jobs:
       - name: Locales parse
         run: for file in app/i18n/locales/*.json; do node -e "JSON.parse(require('fs').readFileSync('$file','utf8'))" || exit 1; done
       - name: App unit tests
-        run: node --test app/state/*.test.mjs app/game/*.test.mjs
+        run: node --test --test-reporter=dot app/state/*.test.mjs app/game/*.test.mjs
       - name: Framework JavaScript tests
         run: cd ps5-react && node --test runtime/js/*.test.mjs
       - name: The whole app bundles
