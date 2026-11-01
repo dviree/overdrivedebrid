@@ -421,7 +421,8 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
       return {
         signal,
         directURL: job2.directURL,
-        noDebrid: job2.noDebrid || authenticatedArchive,
+        // A pasted link carrying its own headers (a qBittorrent WebUI's password) goes to its host.
+        noDebrid: job2.noDebrid || authenticatedArchive || !source.torbox && Object.keys(source.headers || {}).length > 0,
         catalog: job2.gameId !== "link" && !job2.release.link && !authenticatedArchive,
         onStatus: debridStatus(job2)
       };
@@ -559,7 +560,10 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
     function reresolve(job2) {
       const source2 = job2.parts ? job2.currentSource : job2.release;
       // Through a debrid service any expired link is asked for again; otherwise only a host page is.
-      if ((job2.reresolved || 0) >= 2 || (sources.debrid?.() ? ["manifest", "unavailable"] : ["direct", "browser", "datanodes", "buzzheavier", "manifest", "unavailable"]).includes(sourceKind(source2))) return false;
+      // A link a debrid service converted (viaTorbox / viaRealDebrid) is asked for again as well.
+      const sourceJob = job2.parts ? job2.parts[job2.partIndex] : job2;
+      const converted = sourceJob?.viaTorbox || sourceJob?.viaRealDebrid;
+      if ((job2.reresolved || 0) >= 2 || (sources.debrid?.() || converted ? ["manifest", "unavailable"] : ["direct", "browser", "datanodes", "buzzheavier", "manifest", "unavailable"]).includes(sourceKind(source2))) return false;
       job2.reresolved = (job2.reresolved || 0) + 1;
       delete job2.options;
       if (job2.parts) delete job2.parts[job2.partIndex].options;
@@ -924,7 +928,11 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
             // file is behind its password: the release carries the headers for it (link-download.js).
             // MODIFIED: with a debrid key, a link goes through TorBox and Premiumize, unless it carries
             // such headers or "Download directly" asked for the host itself.
-            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" || sources.debrid?.() && !job2.noDebrid && !job2.release.headers || job2.release.torbox ? await sources.resolve(job2.release, sourceOptions(job2, signal)) : { url: webURL(job2.release.url).url, headers: job2.release.headers };
+            // Every source is resolved (a direct one too: the resolver keeps its headers), so the debrid
+            // chain sees each; viaTorbox / viaRealDebrid stay on the job, outside the transfer's options.
+            const { viaTorbox, viaRealDebrid, ...resolved } = await sources.resolve(job2.release, sourceOptions(job2, signal));
+            job2.viaTorbox = viaTorbox === true;
+            job2.viaRealDebrid = viaRealDebrid === true;
             delete job2.phase;
             delete job2.debridProgress;
             job2.options = {
@@ -983,7 +991,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         }
         // Archive.org's nodes shed parallel ranges when many arrive together (an HTTP 503 reads as
         // "Server is busy"): four connections there; elsewhere the cap stall restarts set (connectionCap), else the host's (download-connections.js).
-        const connections = job2.options.archive ? 4 : job2.connectionCap || downloadConnections(transfer);
+        const connections = job2.options.archive ? 4 : job2.connectionCap || downloadConnections(transfer, job2.viaTorbox);
         task = downloads.enqueue({ ...transfer, rejectHtml: true, mirrors: void 0, connections, adaptive: true, rangeBytes: job2.options.rangeBytes, destination: job2.downloadDestination, storageRoot: job2.root, recoverCompleted: true });
         active2.task = task;
         const stalled = stallWatch(job2, task);
@@ -1545,7 +1553,9 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           const source2 = job2.release.parts[index].sources[part.sourceIndex || 0];
           job2.currentSource = source2;
           if (!part.options) {
-            const resolved = await sources.resolve(source2, sourceOptions(job2, signal));
+            const { viaTorbox, viaRealDebrid, ...resolved } = await sources.resolve(source2, sourceOptions(job2, signal));
+            part.viaTorbox = viaTorbox === true;
+            part.viaRealDebrid = viaRealDebrid === true;
             delete job2.phase;
             delete job2.debridProgress;
             part.options = { ...resolved, expectedBytes: resolved.expectedBytes || source2.sizeBytes || void 0, sha256: source2.sha256 || void 0 };
@@ -1567,7 +1577,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
           const task = downloads.enqueue({
             ...part.options,
             rejectHtml: true,
-            connections: job2.connectionCap || downloadConnections(part.options),
+            connections: job2.connectionCap || downloadConnections(part.options, part.viaTorbox),
             adaptive: true,
             destination: part.destination,
             storageRoot: job2.root,
