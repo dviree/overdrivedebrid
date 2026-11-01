@@ -44,17 +44,20 @@ import { Text, View } from '@ps5-react/core';
     removing: { icon: "delete", text: "download.button.removing" }
   };
   var INK = { dark: { color: "#0d0d0f" }, light: { color: "#f2f2f3" }, disabled: { color: "#a3a3ab" } };
-  function statusLine(status, progress, sizeGb) {
+  // MODIFIED (dviree/overdrivedebrid): `approx` when sizeGb is the game's catalog estimate, not the
+  // chosen source's size: shown with ≈ so a different download size does not look like an error.
+  function statusLine(status, progress, sizeGb, approx = false) {
+    const formatSize2 = (gb) => approx ? `\u2248 ${formatSize(gb)}` : formatSize(gb);
     if (status === "unavailable") return [t("download.status.unavailable"), null];
     if (status === "awaiting-browser") return [t("download.status.awaitingLink"), null];
     if (status === "finishing") return [stateLabel(status), t("downloads.writingToDisk")];
     if (status === "debrid") return [stateLabel(status), t("downloads.debridDetail")];
     if (status === "streamed") return [stateLabel(status), null];
-    if (status === "no-space") return [t("download.status.noSpace"), sizeGb && t("download.status.needs", { size: formatSize(sizeGb) })];
-    if (COMPLETE.includes(status)) return [stateLabel(status), sizeGb && formatSize(sizeGb)];
-    const of = sizeGb && t("download.status.progress", { done: formatSize(sizeGb * progress), total: formatSize(sizeGb) });
+    if (status === "no-space") return [t("download.status.noSpace"), sizeGb && t("download.status.needs", { size: formatSize2(sizeGb) })];
+    if (COMPLETE.includes(status)) return [stateLabel(status), sizeGb && formatSize2(sizeGb)];
+    const of = sizeGb && t("download.status.progress", { done: formatSize2(sizeGb * progress), total: formatSize2(sizeGb) });
     if (hasStateLabel(status)) return [stateLabel(status), of];
-    return [t("download.status.ready"), sizeGb && formatSize(sizeGb)];
+    return [t("download.status.ready"), sizeGb && formatSize2(sizeGb)];
   }
   function DownloadLabel({ status, amount, dark }) {
     const t2 = useT();

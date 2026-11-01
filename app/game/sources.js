@@ -2,6 +2,7 @@
 // reconstructed from the esbuild bundle in eboot.bin
 
 import { t } from '../i18n/core.js';
+import { formatName } from '../state/source-format.js';
 import { accountsFor } from '../state/debrid-hosts.js';
 import { sourceKind } from '../state/download-sources.js';
 import { isPs5Package } from '../state/firmware.js';
@@ -60,10 +61,13 @@ import { formatBytes } from '../state/size.js';
   var isOverdriveCdn = (provider) => /^overdrive\s*cdn$/i.test(provider ?? "");
   function describeSource(release) {
     const parts = release.parts?.length;
+    const named = edition(release);
+    const format = formatName(release);
     const detail2 = [
-      edition(release),
+      named,
       release.version ? `v${release.version.replace(/^v/i, "")}` : null,
-      isPatchOnly(release) ? t("sources.kind.patch") : KIND[release.format] && t(KIND[release.format]),
+      // The label may already name the format ("Fpkg - DataNodes" reads "Fpkg"): then it is not said twice.
+      isPatchOnly(release) ? t("sources.kind.patch") : format ? (named.toLowerCase().includes(format.toLowerCase()) ? null : format) : KIND[release.format] && t(KIND[release.format]),
       parts ? t("sources.parts", { count: parts }) : null,
       // ADDED: the debrid accounts whose host lists take this source (debrid-hosts.js).
       accountsFor(release).join(" + ") || null
