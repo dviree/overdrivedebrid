@@ -48,12 +48,15 @@ jobs:
         run: |
           set -e
           head=$(git for-each-ref --format='%(refname:short)' refs/remotes/catkin/main refs/remotes/catkin/master | head -1)
+          # Always a bundle of what main lacks (main's history is its prerequisite, so it stays small);
+          # the branch too when the token may push it (it may not when the commits touch workflows).
+          git bundle create "$RUNNER_TEMP/catkin-overdrive.bundle" "origin/main..$head"
+          git bundle list-heads "$RUNNER_TEMP/catkin-overdrive.bundle"
           remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
-          if git push "$remote" "$head:refs/heads/mirror/catkin-overdrive" 2>&1 | tee "$RUNNER_TEMP/push.log"; then
+          if git push "$remote" "$head:refs/heads/mirror/catkin-overdrive"; then
             echo "pushed $head to mirror/catkin-overdrive"
           else
-            echo "::warning::the branch was refused (see above); the copy goes as a bundle instead"
-            git bundle create "$RUNNER_TEMP/catkin-overdrive.bundle" "$head"
+            echo "::warning::the branch was refused (see above); the bundle carries the copy"
           fi
 
       - name: Bundle the other repositories for review
