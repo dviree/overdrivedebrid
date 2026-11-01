@@ -18,7 +18,9 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
     const releases = edition2.releases || [];
     const bytes = releases[preferredRelease(releases)]?.sizeBytes;
     const sources = sourceSections(releases).filter(({ group }) => group !== "dlc" && group !== "unavailable").reduce((sum, { items }) => sum + items.length, 0);
-    return [bytes ? formatBytes(bytes) : edition2.sizeGb ? formatSize(edition2.sizeGb) : null, t("versions.sources", { count: sources })];
+    // MODIFIED (dviree/overdrivedebrid): without the source's own size, the edition's size is the
+    // catalog's estimate for the game, not this download's: marked ≈ so it is not read as exact.
+    return [bytes ? formatBytes(bytes) : edition2.sizeGb ? `\u2248 ${formatSize(edition2.sizeGb)}` : null, t("versions.sources", { count: sources })];
   }
   function VersionFace({ edition: edition2, here, twin, recommended }) {
     const t2 = useT();
