@@ -1,9 +1,10 @@
 // The Downloads page's own section for downloads that do not come from the catalog (issues #107,
-// #89, #20): a pasted link, a torrent through the user's own qBittorrent, and links and magnets
-// through a debrid service — TorBox, Real-Debrid or Premiumize, picked in one dialog so each card
-// stays one thing. A file that has to be fetched first (a debrid service, qBittorrent) shows it in a
-// dialog with Cancel; once the service names the file, it joins the normal queue, on the drive
-// chosen in Settings.
+// #89, #20): a torrent through the user's own qBittorrent, links and magnets through a debrid
+// service — TorBox, Real-Debrid or Premiumize, picked in one dialog so each card stays one thing —
+// and a link card that opens either a pasted link or the Archive.org account whose sign-in opens
+// its collections (2026-10-26: the account joined the link card, so the strip keeps three).
+// A file that has to be fetched first (a debrid service, qBittorrent) shows it in a dialog with
+// Cancel; once the service names the file, it joins the normal queue, on the drive chosen in Settings.
 //
 // The strip scrolls with the list, so it is the screen that places it (useAddDownloads returns it
 // beside the dialogs): a fixed strip above the list took the focus with it when the list scrolled.
@@ -17,6 +18,7 @@ import { downloadQueue, storageRoots } from '../state/downloads.js';
 import { downloadRoot } from '../state/download-root.js';
 import { qbittorrent as qbittorrentSettings, services as serviceSettings, setService, setServices, useServices } from '../state/download-services.js';
 import { refreshRealDebrid } from '../state/device-login.js';
+import { useArchiveAccount } from '../state/archive-account.js';
 import { cancellation } from '../state/download-sources.js';
 import { addLink, linkInput } from '../state/link-download.js';
 import { createTorbox } from '../state/torbox.js';
@@ -176,6 +178,40 @@ import { FocusScope, Http, Text, View } from '@ps5-react/core';
     ] });
   }
 
+  // The link card asks which kind of link first: one pasted from anywhere, or an item of Archive.org's
+  // collections, which opens only with the account (state/archive-account.js). Two tiles, as the
+  // debrid card lists its services, so the card stays one thing and the strip keeps three.
+  function LinkDialog({ account, onPaste, onArchive, onCancel }) {
+    const t2 = useT();
+    return /* @__PURE__ */ (0, jsxs)(Dialog, { width: 900, onBack: onCancel, children: [
+      /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 34, fontWeight: 600, color: colors.fg }, children: t2("add.link") }),
+      /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", gap: 14 }, children: [
+        /* @__PURE__ */ (0, jsxs)(View, {
+          focusKey: "downloads:link:paste",
+          onPress: onPaste,
+          style: (state) => [{ width: 380, alignItems: "center", gap: 12, borderRadius: 14, paddingVertical: 24, paddingHorizontal: 20, backgroundColor: colors.surface2 }, state.focused ? { backgroundColor: colors.surface3 } : null],
+          children: [
+            /* @__PURE__ */ (0, jsx)(FocusRing, {}),
+            /* @__PURE__ */ (0, jsx)(Icon, { name: "link", size: 52, color: colors.fg }),
+            /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 23, fontWeight: 600, color: colors.fg }, children: t2("add.linkTitle") }),
+            /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 18, color: colors.muted, textAlign: "center" }, children: t2("add.linkDetail") })
+          ]
+        }),
+        /* @__PURE__ */ (0, jsxs)(View, {
+          focusKey: "downloads:link:archive",
+          onPress: onArchive,
+          style: (state) => [{ width: 380, alignItems: "center", gap: 12, borderRadius: 14, paddingVertical: 24, paddingHorizontal: 20, backgroundColor: colors.surface2 }, state.focused ? { backgroundColor: colors.surface3 } : null],
+          children: [
+            /* @__PURE__ */ (0, jsx)(FocusRing, {}),
+            /* @__PURE__ */ (0, jsx)(Icon, { name: "globe", size: 52, color: colors.fg }),
+            /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 23, fontWeight: 600, color: colors.fg }, children: t2("add.archive") }),
+            /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 18, color: account.passwordSet ? colors.fg : colors.subtle, textAlign: "center" }, children: t2(account.passwordSet ? "add.archiveDetail" : "add.archiveSetup") })
+          ]
+        })
+      ] })
+    ] });
+  }
+
   // The client a route names, built around the key saved for it: one debrid service each, or the
   // qBittorrent on the home network.
   function preparer(route, settings) {
@@ -237,14 +273,74 @@ import { FocusScope, Http, Text, View } from '@ps5-react/core';
     });
   }
 
+  // The Archive.org account (2026-10-25): the collections' restricted items answer HTTP 401 unless
+  // the app signs in (state/archive-account.js). It sits with the download services: the email and
+  // the password are saved on the console, the cookies live for this launch only.
+  function ArchiveDialog({ account, onEdit, onClose }) {
+    const t2 = useT();
+    const [busy, setBusy] = useState(false);
+    const [error2, setError] = useState("");
+    const { user, passwordSet } = account;
+    (0, useEffect)(() => setError(""), [user, passwordSet]);
+    const signIn = async () => {
+      setBusy(true);
+      setError("");
+      try {
+        await account.signIn();
+      } catch (failure) {
+        setError(failure.message);
+      } finally {
+        setBusy(false);
+      }
+    };
+    const signOut = async () => {
+      setError("");
+      try {
+        await account.signOut();
+      } catch (failure) {
+        setError(failure.message);
+      }
+    };
+    // What the line under the rows says: the attempt, its failure, the session, or what is missing.
+    const status = busy ? t2("settings.archiveSigningIn") : error2 || (account.signedIn
+      ? t2("settings.archiveSignedIn", { name: account.screenname })
+      : passwordSet ? t2("settings.archiveReady") : t2("settings.archiveHint"));
+    const rows = [
+      { field: "user", icon: "globe", title: t2("settings.archiveUser"), value: account.user, empty: !account.user },
+      { field: "password", icon: "controller", title: t2("settings.archivePassword"), value: passwordSet ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : "", empty: !passwordSet }
+    ];
+    return /* @__PURE__ */ (0, jsxs)(Dialog, { width: 900, onBack: onClose, children: [
+      /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 34, fontWeight: 600, color: colors.fg }, children: t2("settings.archive") }),
+      /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 21, color: colors.muted, lineHeight: 30 }, children: t2("settings.archiveDetail") }),
+      rows.map((row) => /* @__PURE__ */ (0, jsxs)(View, {
+        focusKey: `downloads:archive:${row.field}`,
+        onPress: () => onEdit(row.field),
+        style: (state) => [{ flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 12, paddingHorizontal: 16, height: 64, backgroundColor: colors.surface2 }, state.focused ? { backgroundColor: colors.surface3 } : null],
+        children: [
+          /* @__PURE__ */ (0, jsx)(FocusRing, {}),
+          /* @__PURE__ */ (0, jsx)(Icon, { name: row.icon, size: 20, color: colors.muted }),
+          /* @__PURE__ */ (0, jsx)(Text, { style: { flex: 1, fontFamily: "Inter-Regular", fontSize: 22, color: colors.fg }, children: row.title }),
+          /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 20, color: row.empty ? colors.subtle : colors.fg, numberOfLines: 1, ellipsizeMode: "head" }, children: row.value || t2("settings.archiveNotSet") })
+        ]
+      }, row.field)),
+      /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Inter-Regular", fontSize: 20, color: error2 ? colors.warn : account.signedIn ? colors.ok : colors.muted, lineHeight: 28 }, children: status }),
+      /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", flexWrap: "wrap", gap: 12, paddingTop: 4 }, children: [
+        passwordSet && !account.signedIn ? /* @__PURE__ */ (0, jsx)(Button2, { label: t2("settings.archiveSignIn"), focusKey: "downloads:archive:signin", autoFocus: true, onPress: busy ? void 0 : signIn }) : null,
+        /* @__PURE__ */ (0, jsx)(Button2, { label: t2("hints.close"), variant: "outline", onPress: onClose }),
+        passwordSet ? /* @__PURE__ */ (0, jsx)(Button2, { label: t2("settings.archiveSignOut"), variant: "ghost", onPress: signOut }) : null
+      ] })
+    ] });
+  }
+
   // The strip and its dialogs. The strip belongs in the page's list, where it scrolls with it, and
   // the dialogs above everything: the screen asks for both.
   function useAddDownloads({ onAdded, down } = {}) {
     const t2 = useT();
     const services = useServices();
+    const account = useArchiveAccount();
     const { focusLater } = useNavActions();
     const [dialog, setDialog] = useState(null);
-    // { kind: "link" | "torrent" | "services" | "debrid" | "setup" | "ask" | "run" | "field", ... }
+    // { kind: "linkChoose" | "link" | "torrent" | "services" | "debrid" | "setup" | "ask" | "run" | "field" | "archive" | "archiveField", ... }
     // A URL dialog closes itself once its submit returns: a submit that opened the next dialog has
     // already replaced it by then, and this leaves that one alone.
     const closeIf = (kind) => setDialog((current) => current && current.kind === kind ? null : current);
@@ -331,13 +427,19 @@ import { FocusScope, Http, Text, View } from '@ps5-react/core';
       // Down goes to the first row of the list, which the D-pad used to pass over for the panel on the
       // right: it was the nearer thing below, not the one the player meant (2026-10-25).
       /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", gap: 14, paddingLeft: 12 }, children: [
-        /* @__PURE__ */ (0, jsx)(AddCard, { icon: "link", title: t2("add.link"), detail: t2("add.linkDetail"), focusKey: "downloads:add:link", nextFocusDown: down, onPress: () => setDialog({ kind: "link" }) }),
+        /* @__PURE__ */ (0, jsx)(AddCard, { icon: "link", title: t2("add.link"), detail: t2("add.linkCardDetail"), focusKey: "downloads:add:link", nextFocusDown: down, onPress: () => setDialog({ kind: "linkChoose" }) }),
         /* @__PURE__ */ (0, jsx)(AddCard, { icon: "qbittorrent", title: t2("add.torrent"), detail: services.address ? t2("add.torrentDetail") : t2("add.torrentSetup"), focusKey: "downloads:add:torrent", nextFocusDown: down, onPress: card }),
         /* @__PURE__ */ (0, jsx)(AddCard, { icon: "layers", title: t2("add.debrid"), detail: t2("add.debridDetail"), focusKey: "downloads:add:debrid", nextFocusDown: down, onPress: () => setDialog({ kind: "services" }) })
       ] })
     ] });
 
     const dialogs = /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
+      dialog && dialog.kind === "linkChoose" ? /* @__PURE__ */ (0, jsx)(LinkDialog, {
+        account,
+        onPaste: () => setDialog({ kind: "link" }),
+        onArchive: () => setDialog({ kind: "archive" }),
+        onCancel: () => setDialog(null)
+      }) : null,
       dialog && dialog.kind === "link" ? /* @__PURE__ */ (0, jsx)(URLDialog, {
         title: t2("add.linkTitle"), detail: t2("add.linkBody"), initial: "",
         submit: (value) => open("link", value), onClose: () => closeIf("link")
@@ -392,6 +494,26 @@ import { FocusScope, Http, Text, View } from '@ps5-react/core';
           focusLater(primaryKey(id));
         },
         onClose: () => setDialog(null)
+      }) : null,
+      // The Archive.org account, behind the link card: the rows open the keyboard here, and the
+      // dialog comes back once the field is saved or left alone. Closing it closes the page's flow,
+      // as the debrid card's own pick does.
+      dialog && dialog.kind === "archive" ? /* @__PURE__ */ (0, jsx)(ArchiveDialog, {
+        account,
+        onEdit: (field) => setDialog({ kind: "archiveField", field }),
+        onClose: () => setDialog(null)
+      }) : null,
+      dialog && dialog.kind === "archiveField" ? /* @__PURE__ */ (0, jsx)(URLDialog, {
+        title: t2(dialog.field === "user" ? "settings.archiveUser" : "settings.archivePassword"),
+        detail: t2(`settings.archiveFieldBody.${dialog.field}`),
+        initial: dialog.field === "user" ? account.user : "",
+        secret: dialog.field === "password",
+        confirm: t2("settings.archiveSave"),
+        submit: (value) => {
+          account.setField(dialog.field, value);
+          setDialog({ kind: "archive" });
+        },
+        onClose: () => setDialog({ kind: "archive" })
       }) : null
     ] });
 

@@ -200,7 +200,8 @@ import { linkInput } from './link-download.js';
       return prepared;
     }
 
-    return { addMagnet, status, prepare, unrestrict };
+    const hosts = ({ signal } = {}) => call('/hosts/status', { signal });
+    return { addMagnet, status, prepare, unrestrict, hosts };
   }
 
   // The fork's debrid chain: a host link Real-Debrid unrestricts into a link on its own servers. A
