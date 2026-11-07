@@ -61,6 +61,8 @@ except ImportError:
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DATA = ROOT / "app" / "data"
 CHIHIRO = "https://store.playstation.com/store/api/chihiro/00_09_000/titlecontainer/{store}/{lang}/999/{title}_00"
+# The title lists by platform (load_titles); dropped by MyLuxy/overdrive a2e5a2de while still read.
+ANDSHREW = "https://raw.githubusercontent.com/andshrew/PlayStation-Titles/main/{platform}_Titles.tsv"
 # A storefront search for a game the title ID lookup did not give (a renamed, delisted or cross-gen
 # product); ?game_content_type=games keeps add-ons out of the answer.
 SEARCH = "https://store.playstation.com/store/api/chihiro/00_09_000/search/{store}/{lang}/24/{query}{filter}"
