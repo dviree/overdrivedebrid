@@ -22,6 +22,11 @@ jobs:
         run: cd ps5-react && npm ci --ignore-scripts --no-audit --no-fund
       - name: Locales parse
         run: for file in app/i18n/locales/*.json; do node -e "JSON.parse(require('fs').readFileSync('$file','utf8'))" || exit 1; done
+      - name: Python tools name nothing undefined
+        # A name the catalog scripts use but no longer define fails only at night, in catalog.yml.
+        run: |
+          pip install -q pyflakes
+          ! python -m pyflakes tools/*.py ps5-react/tools/*.py | grep "undefined name"
       - name: App unit tests
         run: node --test --test-reporter=dot app/state/*.test.mjs app/game/*.test.mjs
       - name: Framework JavaScript tests
