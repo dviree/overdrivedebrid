@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # starts a build when the new games go into main (below)
 
 concurrency:
   group: catalog
@@ -102,6 +103,30 @@ jobs:
 
       # One commit on an orphan branch, replaced each night: the branch never grows. Nothing is pushed
       # when only the date changed.
+      # ADDED (dviree/overdrivedebrid): the console reads at most 4 MiB, so once the new games make the
+      # update bigger than that nothing reaches the players, and no release ever carries them (no one
+      # here commits the imports by hand, as MyLuxy did). Then they go into main, and a build makes a
+      # release whose own catalog holds them; the next nights' updates start from it again.
+      - name: Fold the new games into main when the update is too big
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f "$RUNNER_TEMP/catalog-update.json" ] || [ -z "$(git status --porcelain -- app/data)" ]; then
+            echo "nothing to fold into main"
+            exit 0
+          fi
+          git add -A -- app/data
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "catalog: the games imported since the last release" -m "Run ${{ github.run_id }} of catalog.yml; the update was over 4 MB."
+          git fetch -q origin main
+          git rebase -q origin/main
+          if git push -q origin HEAD:main; then
+            gh workflow run build.yml --ref main
+            echo "the new games are on main; a build makes the release that carries them"
+          else
+            echo "::warning::main refused the new games; they are imported again tomorrow"
+          fi
+
       - name: Publish it
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
